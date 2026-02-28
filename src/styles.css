@@ -129,6 +129,11 @@ header {
 }
 
 .tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.tab.active[data-view="shopping"] {
   color: #fbbc04;
   border-bottom-color: #fbbc04;
 }
