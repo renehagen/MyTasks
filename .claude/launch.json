@@ -1,0 +1,17 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "mytasks-swa",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["C:/Users/clien/AppData/Roaming/npm/node_modules/@azure/static-web-apps-cli/dist/cli/bin.js", "start", "src", "--api-location", "api"],
+      "port": 4280
+    },
+    {
+      "name": "mytasks-api",
+      "runtimeExecutable": "node",
+      "runtimeArgs": ["C:/Program Files/Microsoft/Azure Functions Core Tools/func.dll", "start", "--prefix", "api"],
+      "port": 7071
+    }
+  ]
+}

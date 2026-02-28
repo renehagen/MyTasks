@@ -63,8 +63,44 @@ async function listTasks(filters = {}) {
     tasks.push(entityToTask(entity));
   }
 
-  // Sort by updatedAt descending
-  tasks.sort((a, b) => new Date(b.updatedAt) - new Date(a.updatedAt));
+  const priorityOrder = { 'high': 0, 'medium': 1, 'low': 2 };
+  const today = new Date().toISOString().slice(0, 10);
+
+  function sortGroup(task) {
+    const active = task.status !== 'done' && task.status !== 'cancelled' && task.status !== 'backlog';
+    const overdue = active && task.dueDate && task.dueDate < today;
+    if (overdue) return 0;
+    if (task.status === 'in-progress') return 1;
+    if (task.status === 'todo') return 2;
+    if (task.status === 'done' || task.status === 'cancelled') return 3;
+    if (task.status === 'backlog') return 4;
+    return 5;
+  }
+
+  tasks.sort((a, b) => {
+    // 1. Sort group: overdue > in-progress > todo > done/cancelled > backlog
+    const ga = sortGroup(a);
+    const gb = sortGroup(b);
+    if (ga !== gb) return ga - gb;
+
+    // 2. Tasks with due date before tasks without
+    const aHasDue = !!a.dueDate;
+    const bHasDue = !!b.dueDate;
+    if (aHasDue !== bHasDue) return aHasDue ? -1 : 1;
+
+    // 3. Due date ascending (earliest first)
+    if (aHasDue && bHasDue) {
+      const cmp = a.dueDate.localeCompare(b.dueDate);
+      if (cmp !== 0) return cmp;
+    }
+
+    // 4. Priority: high > medium > low
+    const pa = priorityOrder[a.priority] ?? 9;
+    const pb = priorityOrder[b.priority] ?? 9;
+    if (pa !== pb) return pa - pb;
+
+    return 0;
+  });
   return tasks;
 }
 
