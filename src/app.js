@@ -241,6 +241,13 @@
     openModal();
   }
 
+  // Scroll focused input into view when keyboard opens
+  taskForm.addEventListener('focusin', (e) => {
+    if (e.target.matches('input, textarea, select')) {
+      setTimeout(() => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
+    }
+  });
+
   addTaskBtn.addEventListener('click', openNewModal);
   modalClose.addEventListener('click', closeModal);
   cancelBtn.addEventListener('click', closeModal);
