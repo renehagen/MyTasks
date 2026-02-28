@@ -1,0 +1,14 @@
+{
+  "name": "mytasks-api",
+  "version": "1.0.0",
+  "description": "MyTasks API - Azure Functions backend",
+  "main": "src/functions/*.js",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@azure/data-tables": "^13.3.0",
+    "@azure/functions": "^4.6.0",
+    "uuid": "^11.1.0"
+  }
+}
