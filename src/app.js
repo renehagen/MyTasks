@@ -241,10 +241,19 @@
     openModal();
   }
 
-  // Scroll focused input into view when keyboard opens
+  // When keyboard opens on mobile, scroll modal so Save button stays visible
+  const modalEl = taskModal.querySelector('.modal');
+  function scrollModalToBottom() {
+    if (!taskModal.hidden) {
+      modalEl.scrollTop = modalEl.scrollHeight;
+    }
+  }
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', scrollModalToBottom);
+  }
   taskForm.addEventListener('focusin', (e) => {
     if (e.target.matches('input, textarea, select')) {
-      setTimeout(() => e.target.scrollIntoView({ block: 'center', behavior: 'smooth' }), 300);
+      setTimeout(scrollModalToBottom, 300);
     }
   });
 
