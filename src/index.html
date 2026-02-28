@@ -30,15 +30,15 @@
       <header>
         <div class="header-content">
           <nav class="header-tabs">
-            <button class="tab active" data-view="tasks">Tasks</button>
-            <button class="tab" data-view="shopping">Shopping</button>
+            <button class="tab active" data-view="shopping">Shopping</button>
+            <button class="tab" data-view="tasks">Tasks</button>
           </nav>
           <button id="logout-btn" class="btn btn-ghost" title="Disconnect">&#x2715;</button>
         </div>
       </header>
 
       <!-- Tasks View -->
-      <div id="tasks-view">
+      <div id="tasks-view" hidden>
         <div class="filters">
           <input type="search" id="filter-search" placeholder="Search tasks...">
           <select id="filter-status">
@@ -66,7 +66,7 @@
       </div>
 
       <!-- Shopping View -->
-      <div id="shopping-view" hidden>
+      <div id="shopping-view">
         <div class="shopping-add">
           <input type="text" id="shopping-add-input" placeholder="Add item..." autocomplete="off">
         </div>

@@ -44,7 +44,7 @@
   const shoppingListEl = document.getElementById('shopping-list');
   const shoppingEmpty = document.getElementById('shopping-empty');
 
-  let currentView = 'tasks';
+  let currentView = 'shopping';
 
   // --- API Client ---
   async function api(path, options = {}) {
@@ -84,7 +84,7 @@
       localStorage.setItem('mytasks_api_key', key);
       authGate.hidden = true;
       mainApp.hidden = false;
-      loadTasks();
+      loadShoppingItems();
     } catch {
       apiKey = '';
       throw new Error('Invalid API key');
