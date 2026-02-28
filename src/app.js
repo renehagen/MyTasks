@@ -124,32 +124,42 @@
   }
 
   function renderTask(task) {
-    const card = document.createElement('div');
-    card.className = 'task-card';
-    card.dataset.id = task.id;
+    const row = document.createElement('div');
+    row.className = 'task-row';
+    row.dataset.id = task.id;
 
-    const titleClass = (task.status === 'done' || task.status === 'cancelled') ? ' done' : '';
+    const isDone = task.status === 'done' || task.status === 'cancelled';
+    const titleClass = isDone ? ' done' : '';
     const dueHtml = task.dueDate
-      ? `<span class="task-card-due${isOverdue(task.dueDate) && task.status !== 'done' ? ' overdue' : ''}">${formatDate(task.dueDate)}</span>`
-      : '';
-    const notesHtml = task.notes
-      ? `<div class="task-card-notes">${escapeHtml(task.notes)}</div>`
+      ? `<span class="task-row-due${isOverdue(task.dueDate) && !isDone ? ' overdue' : ''}">${formatDate(task.dueDate)}</span>`
       : '';
 
-    card.innerHTML = `
-      <div class="task-card-header">
-        <span class="task-card-title${titleClass}">${escapeHtml(task.title)}</span>
-      </div>
-      <div class="task-card-meta">
-        <span class="badge badge-status ${task.status}">${task.status}</span>
-        <span class="badge badge-priority ${task.priority}">${task.priority}</span>
-        ${dueHtml}
-      </div>
-      ${notesHtml}
+    row.innerHTML = `
+      <span class="task-row-priority ${task.priority}"></span>
+      <span class="task-row-title${titleClass}">${escapeHtml(task.title)}</span>
+      ${dueHtml}
+      <span class="task-row-status ${task.status}">${task.status}</span>
+      <button class="task-row-check${isDone ? ' checked' : ''}" title="${isDone ? 'Reopen' : 'Mark done'}">&#x2713;</button>
     `;
 
-    card.addEventListener('click', () => openEditModal(task));
-    return card;
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('.task-row-check')) return;
+      openEditModal(task);
+    });
+
+    row.querySelector('.task-row-check').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      try {
+        const newStatus = isDone ? 'todo' : 'done';
+        await api(`/tasks/${task.id}`, { method: 'PUT', body: JSON.stringify({ status: newStatus }) });
+        showToast(newStatus === 'done' ? 'Task completed' : 'Task reopened');
+        loadTasks();
+      } catch (err) {
+        showToast(err.message);
+      }
+    });
+
+    return row;
   }
 
   function escapeHtml(str) {
