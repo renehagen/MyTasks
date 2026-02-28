@@ -208,7 +208,6 @@
   function openModal() {
     taskModal.hidden = false;
     taskTitleField.focus();
-    adjustModalViewport();
   }
 
   function closeModal() {
@@ -216,21 +215,6 @@
     taskForm.reset();
     taskIdField.value = '';
     deleteTaskBtn.hidden = true;
-    taskModal.style.height = '';
-    taskModal.style.top = '';
-  }
-
-  // Resize modal overlay to fit above virtual keyboard
-  function adjustModalViewport() {
-    if (!window.visualViewport || taskModal.hidden) return;
-    const vv = window.visualViewport;
-    taskModal.style.height = vv.height + 'px';
-    taskModal.style.top = vv.offsetTop + 'px';
-  }
-
-  if (window.visualViewport) {
-    window.visualViewport.addEventListener('resize', adjustModalViewport);
-    window.visualViewport.addEventListener('scroll', adjustModalViewport);
   }
 
   function openNewModal() {
