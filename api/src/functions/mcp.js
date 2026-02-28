@@ -108,6 +108,46 @@ const TOOL_DEFINITIONS = [
       },
       required: ['query']
     }
+  },
+  {
+    name: 'list_shopping_items',
+    description: 'List all shopping list items. Returns items sorted with unchecked first, then checked.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'create_shopping_item',
+    description: 'Add a new item to the shopping list.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Item name (required)' }
+      },
+      required: ['title']
+    }
+  },
+  {
+    name: 'update_shopping_item',
+    description: 'Update a shopping list item. Can change title or checked status.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'The item ID (required)' },
+        title: { type: 'string', description: 'New item name' },
+        checked: { type: 'boolean', description: 'Whether the item is checked off' }
+      },
+      required: ['id']
+    }
+  },
+  {
+    name: 'delete_shopping_item',
+    description: 'Delete a shopping list item by ID.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'The item ID' }
+      },
+      required: ['id']
+    }
   }
 ];
 
@@ -166,6 +206,38 @@ async function handleToolCall(name, args) {
       }
       const tasks = await storage.searchTasks(args.query);
       return { content: [{ type: 'text', text: JSON.stringify(tasks, null, 2) }] };
+    }
+    case 'list_shopping_items': {
+      const items = await storage.listShoppingItems();
+      return { content: [{ type: 'text', text: JSON.stringify(items, null, 2) }] };
+    }
+    case 'create_shopping_item': {
+      if (!args.title) {
+        return { content: [{ type: 'text', text: 'Title is required' }], isError: true };
+      }
+      const item = await storage.createShoppingItem({ title: args.title });
+      return { content: [{ type: 'text', text: JSON.stringify(item, null, 2) }] };
+    }
+    case 'update_shopping_item': {
+      if (!args.id) {
+        return { content: [{ type: 'text', text: 'Item ID is required' }], isError: true };
+      }
+      const { id: itemId, ...itemUpdates } = args;
+      const item = await storage.updateShoppingItem(itemId, itemUpdates);
+      if (!item) {
+        return { content: [{ type: 'text', text: 'Item not found' }], isError: true };
+      }
+      return { content: [{ type: 'text', text: JSON.stringify(item, null, 2) }] };
+    }
+    case 'delete_shopping_item': {
+      if (!args.id) {
+        return { content: [{ type: 'text', text: 'Item ID is required' }], isError: true };
+      }
+      const didDelete = await storage.deleteTask(args.id);
+      if (!didDelete) {
+        return { content: [{ type: 'text', text: 'Item not found' }], isError: true };
+      }
+      return { content: [{ type: 'text', text: `Item ${args.id} deleted successfully` }] };
     }
     default:
       return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true };

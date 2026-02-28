@@ -29,42 +29,52 @@
     <div id="main-app" hidden>
       <header>
         <div class="header-content">
-          <h1>MyTasks</h1>
+          <nav class="header-tabs">
+            <button class="tab active" data-view="tasks">Tasks</button>
+            <button class="tab" data-view="shopping">Shopping</button>
+          </nav>
           <button id="logout-btn" class="btn btn-ghost" title="Disconnect">&#x2715;</button>
         </div>
       </header>
 
-      <!-- Filters -->
-      <div class="filters">
-        <input type="search" id="filter-search" placeholder="Search tasks...">
-        <select id="filter-status">
-          <option value="">All statuses</option>
-          <option value="backlog">Backlog</option>
-          <option value="todo">To Do</option>
-          <option value="in-progress">In Progress</option>
-          <option value="done">Done</option>
-          <option value="cancelled">Cancelled</option>
-        </select>
-        <select id="filter-priority">
-          <option value="">All priorities</option>
-          <option value="high">High</option>
-          <option value="medium">Medium</option>
-          <option value="low">Low</option>
-        </select>
+      <!-- Tasks View -->
+      <div id="tasks-view">
+        <div class="filters">
+          <input type="search" id="filter-search" placeholder="Search tasks...">
+          <select id="filter-status">
+            <option value="">All statuses</option>
+            <option value="backlog">Backlog</option>
+            <option value="todo">To Do</option>
+            <option value="in-progress">In Progress</option>
+            <option value="done">Done</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+          <select id="filter-priority">
+            <option value="">All priorities</option>
+            <option value="high">High</option>
+            <option value="medium">Medium</option>
+            <option value="low">Low</option>
+          </select>
+        </div>
+        <div id="task-list" class="task-list">
+          <div class="loading">Loading tasks...</div>
+        </div>
+        <div id="empty-state" class="empty-state" hidden>
+          <p>No tasks found</p>
+        </div>
+        <button id="add-task-btn" class="fab" title="Add task">+</button>
       </div>
 
-      <!-- Task List -->
-      <div id="task-list" class="task-list">
-        <div class="loading">Loading tasks...</div>
+      <!-- Shopping View -->
+      <div id="shopping-view" hidden>
+        <div class="shopping-add">
+          <input type="text" id="shopping-add-input" placeholder="Add item..." autocomplete="off">
+        </div>
+        <div id="shopping-list" class="shopping-list"></div>
+        <div id="shopping-empty" class="empty-state" hidden>
+          <p>Shopping list is empty</p>
+        </div>
       </div>
-
-      <!-- Empty State -->
-      <div id="empty-state" class="empty-state" hidden>
-        <p>No tasks found</p>
-      </div>
-
-      <!-- FAB -->
-      <button id="add-task-btn" class="fab" title="Add task">+</button>
     </div>
 
     <!-- Task Modal -->

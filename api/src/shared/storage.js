@@ -3,6 +3,7 @@ const { v4: uuidv4 } = require('uuid');
 
 const TABLE_NAME = 'tasks';
 const PARTITION_KEY = 'task';
+const SORT_ORDER_GAP = 1000;
 
 let tableClient = null;
 let tableReady = false;
@@ -60,6 +61,7 @@ async function listTasks(filters = {}) {
 
   const tasks = [];
   for await (const entity of entities) {
+    if (entity.category === 'shopping') continue;
     tasks.push(entityToTask(entity));
   }
 
@@ -184,4 +186,119 @@ async function searchTasks(query) {
   );
 }
 
-module.exports = { listTasks, getTask, createTask, updateTask, deleteTask, searchTasks };
+// --- Shopping Items ---
+
+function entityToShoppingItem(entity) {
+  return {
+    id: entity.rowKey,
+    title: entity.title,
+    checked: entity.checked === true,
+    sortOrder: entity.sortOrder || 0,
+    createdAt: entity.createdAt,
+    updatedAt: entity.updatedAt
+  };
+}
+
+async function listShoppingItems() {
+  await ensureTable();
+  const client = getTableClient();
+  const filter = `PartitionKey eq '${PARTITION_KEY}' and category eq 'shopping'`;
+  const entities = client.listEntities({ queryOptions: { filter } });
+
+  const items = [];
+  for await (const entity of entities) {
+    items.push(entityToShoppingItem(entity));
+  }
+
+  items.sort((a, b) => {
+    if (a.checked !== b.checked) return a.checked ? 1 : -1;
+    return a.sortOrder - b.sortOrder;
+  });
+
+  return items;
+}
+
+async function createShoppingItem(data) {
+  await ensureTable();
+  const client = getTableClient();
+  const now = new Date().toISOString();
+
+  const existing = await listShoppingItems();
+  const maxSort = existing.reduce((max, item) => Math.max(max, item.sortOrder), 0);
+
+  const entity = {
+    partitionKey: PARTITION_KEY,
+    rowKey: uuidv4(),
+    category: 'shopping',
+    title: data.title,
+    checked: false,
+    sortOrder: maxSort + SORT_ORDER_GAP,
+    status: '',
+    priority: '',
+    notes: '',
+    dueDate: '',
+    createdAt: now,
+    updatedAt: now
+  };
+
+  await client.createEntity(entity);
+  return entityToShoppingItem(entity);
+}
+
+async function updateShoppingItem(id, data) {
+  await ensureTable();
+  const client = getTableClient();
+
+  let existing;
+  try {
+    existing = await client.getEntity(PARTITION_KEY, id);
+  } catch (err) {
+    if (err.statusCode === 404) return null;
+    throw err;
+  }
+
+  const updated = {
+    partitionKey: PARTITION_KEY,
+    rowKey: id,
+    category: 'shopping',
+    title: data.title !== undefined ? data.title : existing.title,
+    checked: data.checked !== undefined ? data.checked : existing.checked,
+    sortOrder: data.sortOrder !== undefined ? data.sortOrder : existing.sortOrder,
+    status: existing.status || '',
+    priority: existing.priority || '',
+    notes: existing.notes || '',
+    dueDate: existing.dueDate || '',
+    createdAt: existing.createdAt,
+    updatedAt: new Date().toISOString()
+  };
+
+  await client.updateEntity(updated, 'Replace');
+  return entityToShoppingItem(updated);
+}
+
+async function reorderShoppingItems(orderedIds) {
+  await ensureTable();
+  const client = getTableClient();
+  const now = new Date().toISOString();
+
+  const actions = [];
+  for (let i = 0; i < orderedIds.length; i++) {
+    actions.push(['update', {
+      partitionKey: PARTITION_KEY,
+      rowKey: orderedIds[i],
+      sortOrder: i * SORT_ORDER_GAP,
+      updatedAt: now
+    }, 'Merge']);
+  }
+
+  if (actions.length > 0) {
+    await client.submitTransaction(actions);
+  }
+
+  return listShoppingItems();
+}
+
+module.exports = {
+  listTasks, getTask, createTask, updateTask, deleteTask, searchTasks,
+  listShoppingItems, createShoppingItem, updateShoppingItem, reorderShoppingItems
+};

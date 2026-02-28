@@ -34,6 +34,18 @@
   const cancelBtn = document.getElementById('cancel-btn');
   const toastEl = document.getElementById('toast');
 
+  // Tab navigation
+  const headerTabs = document.querySelectorAll('.tab');
+  const tasksView = document.getElementById('tasks-view');
+  const shoppingView = document.getElementById('shopping-view');
+
+  // Shopping view
+  const shoppingAddInput = document.getElementById('shopping-add-input');
+  const shoppingListEl = document.getElementById('shopping-list');
+  const shoppingEmpty = document.getElementById('shopping-empty');
+
+  let currentView = 'tasks';
+
   // --- API Client ---
   async function api(path, options = {}) {
     const res = await fetch(`${API_BASE}${path}`, {
@@ -309,6 +321,241 @@
       showToast(e.message);
     }
   });
+
+  // --- Tab Navigation ---
+  headerTabs.forEach(tab => {
+    tab.addEventListener('click', () => {
+      const view = tab.dataset.view;
+      if (view === currentView) return;
+      currentView = view;
+      headerTabs.forEach(t => t.classList.toggle('active', t.dataset.view === view));
+      if (view === 'tasks') {
+        tasksView.hidden = false;
+        shoppingView.hidden = true;
+        loadTasks();
+      } else {
+        tasksView.hidden = true;
+        shoppingView.hidden = false;
+        loadShoppingItems();
+      }
+    });
+  });
+
+  // --- Shopping List ---
+  function renderShoppingItem(item) {
+    const row = document.createElement('div');
+    row.className = 'shopping-item' + (item.checked ? ' checked-item' : '');
+    row.dataset.id = item.id;
+    row.dataset.sortOrder = item.sortOrder;
+
+    row.innerHTML = `
+      <span class="shopping-item-handle" title="Drag to reorder">&#x2630;</span>
+      <button class="shopping-item-check${item.checked ? ' checked' : ''}"
+              title="${item.checked ? 'Uncheck' : 'Check'}">&#x2713;</button>
+      <span class="shopping-item-title">${escapeHtml(item.title)}</span>
+      <button class="shopping-item-delete" title="Remove">&#x2715;</button>
+    `;
+
+    row.querySelector('.shopping-item-check').addEventListener('click', async () => {
+      try {
+        await api(`/shopping/${item.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ checked: !item.checked })
+        });
+        loadShoppingItems();
+      } catch (err) {
+        showToast(err.message);
+      }
+    });
+
+    row.querySelector('.shopping-item-delete').addEventListener('click', async () => {
+      try {
+        await api(`/shopping/${item.id}`, { method: 'DELETE' });
+        showToast('Item removed');
+        loadShoppingItems();
+      } catch (err) {
+        showToast(err.message);
+      }
+    });
+
+    return row;
+  }
+
+  async function loadShoppingItems() {
+    try {
+      const items = await api('/shopping');
+      shoppingListEl.innerHTML = '';
+      shoppingEmpty.hidden = items.length > 0;
+
+      const unchecked = items.filter(i => !i.checked);
+      const checked = items.filter(i => i.checked);
+
+      for (const item of unchecked) {
+        shoppingListEl.appendChild(renderShoppingItem(item));
+      }
+
+      if (checked.length > 0) {
+        const divider = document.createElement('div');
+        divider.className = 'shopping-divider';
+        divider.innerHTML = `
+          <span>${checked.length} checked</span>
+          <button class="clear-checked-btn">Clear all</button>
+        `;
+        shoppingListEl.appendChild(divider);
+
+        divider.querySelector('.clear-checked-btn').addEventListener('click', async () => {
+          if (!confirm('Remove all checked items?')) return;
+          try {
+            await Promise.all(checked.map(item =>
+              api(`/shopping/${item.id}`, { method: 'DELETE' })
+            ));
+            showToast('Checked items cleared');
+            loadShoppingItems();
+          } catch (err) {
+            showToast(err.message);
+          }
+        });
+
+        for (const item of checked) {
+          shoppingListEl.appendChild(renderShoppingItem(item));
+        }
+      }
+
+      initDragHandlers();
+    } catch (err) {
+      showToast('Failed to load shopping list');
+    }
+  }
+
+  // Inline add
+  shoppingAddInput.addEventListener('keydown', async (e) => {
+    if (e.key !== 'Enter') return;
+    const title = shoppingAddInput.value.trim();
+    if (!title) return;
+
+    try {
+      shoppingAddInput.disabled = true;
+      await api('/shopping', { method: 'POST', body: JSON.stringify({ title }) });
+      shoppingAddInput.value = '';
+      loadShoppingItems();
+    } catch (err) {
+      showToast(err.message);
+    } finally {
+      shoppingAddInput.disabled = false;
+      shoppingAddInput.focus();
+    }
+  });
+
+  // --- Drag to Reorder ---
+  let dragState = null;
+
+  function initDragHandlers() {
+    const handles = shoppingListEl.querySelectorAll('.shopping-item:not(.checked-item) .shopping-item-handle');
+    handles.forEach(handle => {
+      handle.addEventListener('pointerdown', onDragStart);
+    });
+  }
+
+  function onDragStart(e) {
+    if (e.button !== 0) return;
+
+    const itemEl = e.target.closest('.shopping-item');
+    if (!itemEl || itemEl.classList.contains('checked-item')) return;
+
+    e.preventDefault();
+    e.target.setPointerCapture(e.pointerId);
+
+    const rect = itemEl.getBoundingClientRect();
+    const allItems = Array.from(
+      shoppingListEl.querySelectorAll('.shopping-item:not(.checked-item)')
+    );
+
+    dragState = {
+      pointerId: e.pointerId,
+      itemEl: itemEl,
+      startY: e.clientY,
+      offsetY: e.clientY - rect.top,
+      ghost: null,
+      items: allItems,
+      itemRects: allItems.map(el => el.getBoundingClientRect()),
+      currentIndex: allItems.indexOf(itemEl),
+      originalIndex: allItems.indexOf(itemEl)
+    };
+
+    const ghost = document.createElement('div');
+    ghost.className = 'drag-ghost';
+    ghost.textContent = itemEl.querySelector('.shopping-item-title').textContent;
+    ghost.style.width = rect.width + 'px';
+    ghost.style.left = rect.left + 'px';
+    ghost.style.top = (e.clientY - dragState.offsetY) + 'px';
+    document.body.appendChild(ghost);
+    dragState.ghost = ghost;
+
+    itemEl.classList.add('dragging');
+
+    document.addEventListener('pointermove', onDragMove);
+    document.addEventListener('pointerup', onDragEnd);
+    document.addEventListener('pointercancel', onDragEnd);
+  }
+
+  function onDragMove(e) {
+    if (!dragState || e.pointerId !== dragState.pointerId) return;
+
+    dragState.ghost.style.top = (e.clientY - dragState.offsetY) + 'px';
+
+    let newIndex = dragState.currentIndex;
+    for (let i = 0; i < dragState.itemRects.length; i++) {
+      const midY = dragState.itemRects[i].top + dragState.itemRects[i].height / 2;
+      if (e.clientY < midY) {
+        newIndex = i;
+        break;
+      }
+      newIndex = i + 1;
+    }
+    newIndex = Math.max(0, Math.min(newIndex, dragState.items.length - 1));
+
+    if (newIndex !== dragState.currentIndex) {
+      const movingEl = dragState.itemEl;
+      if (newIndex < dragState.currentIndex) {
+        shoppingListEl.insertBefore(movingEl, dragState.items[newIndex]);
+      } else {
+        const refEl = dragState.items[newIndex];
+        shoppingListEl.insertBefore(movingEl, refEl.nextSibling);
+      }
+
+      dragState.items = Array.from(
+        shoppingListEl.querySelectorAll('.shopping-item:not(.checked-item)')
+      );
+      dragState.itemRects = dragState.items.map(el => el.getBoundingClientRect());
+      dragState.currentIndex = dragState.items.indexOf(movingEl);
+    }
+  }
+
+  async function onDragEnd(e) {
+    if (!dragState || e.pointerId !== dragState.pointerId) return;
+
+    document.removeEventListener('pointermove', onDragMove);
+    document.removeEventListener('pointerup', onDragEnd);
+    document.removeEventListener('pointercancel', onDragEnd);
+
+    dragState.itemEl.classList.remove('dragging');
+    dragState.ghost.remove();
+
+    if (dragState.currentIndex !== dragState.originalIndex) {
+      const orderedIds = dragState.items.map(el => el.dataset.id);
+      try {
+        await api('/shopping/reorder', {
+          method: 'PUT',
+          body: JSON.stringify({ orderedIds })
+        });
+      } catch (err) {
+        showToast('Failed to save order');
+        loadShoppingItems();
+      }
+    }
+
+    dragState = null;
+  }
 
   // --- Init ---
   if (apiKey) {
