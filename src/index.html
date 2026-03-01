@@ -14,8 +14,16 @@
 </head>
 <body>
   <div id="app">
+    <!-- Connecting Splash -->
+    <div id="splash" class="auth-gate" hidden>
+      <div class="auth-card">
+        <h1>MyTasks</h1>
+        <p class="splash-status">Connecting...</p>
+      </div>
+    </div>
+
     <!-- Auth Gate -->
-    <div id="auth-gate" class="auth-gate">
+    <div id="auth-gate" class="auth-gate" hidden>
       <div class="auth-card">
         <h1>MyTasks</h1>
         <p>Enter your API key to continue</p>

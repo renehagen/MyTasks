@@ -5,6 +5,7 @@
   let apiKey = localStorage.getItem('mytasks_api_key') || '';
 
   // --- DOM refs ---
+  const splash = document.getElementById('splash');
   const authGate = document.getElementById('auth-gate');
   const apiKeyInput = document.getElementById('api-key-input');
   const authSubmit = document.getElementById('auth-submit');
@@ -58,7 +59,9 @@
     });
     if (!res.ok) {
       const err = await res.json().catch(() => ({ error: res.statusText }));
-      throw new Error(err.error || `HTTP ${res.status}`);
+      const error = new Error(err.error || `HTTP ${res.status}`);
+      error.status = res.status;
+      throw error;
     }
     return res.json();
   }
@@ -77,7 +80,7 @@
   }
 
   // --- Auth ---
-  async function tryAuth(key) {
+  async function tryAuth(key, isAutoLogin) {
     apiKey = key;
     try {
       await api('/tasks');
@@ -85,9 +88,20 @@
       authGate.hidden = true;
       mainApp.hidden = false;
       loadShoppingItems();
-    } catch {
+    } catch (e) {
+      if (e.status === 401) {
+        // Definitive auth failure - clear saved key
+        apiKey = '';
+        localStorage.removeItem('mytasks_api_key');
+        throw new Error('Invalid API key');
+      }
+      // Server/network error - keep key for retry if auto-login
+      if (isAutoLogin) {
+        apiKey = key;
+        throw new Error('Server unavailable');
+      }
       apiKey = '';
-      throw new Error('Invalid API key');
+      throw new Error(e.message || 'Connection failed');
     }
   }
 
@@ -116,6 +130,7 @@
     apiKey = '';
     localStorage.removeItem('mytasks_api_key');
     mainApp.hidden = true;
+    splash.hidden = true;
     authGate.hidden = false;
     apiKeyInput.value = '';
     authError.hidden = true;
@@ -559,9 +574,23 @@
 
   // --- Init ---
   if (apiKey) {
-    tryAuth(apiKey).catch(() => {
+    splash.hidden = false;
+    (async function autoLogin() {
+      for (let attempt = 0; attempt < 3; attempt++) {
+        try {
+          await tryAuth(apiKey, true);
+          splash.hidden = true;
+          return;
+        } catch (e) {
+          if (e.message === 'Invalid API key') break;
+          if (attempt < 2) await new Promise(r => setTimeout(r, 2000));
+        }
+      }
+      splash.hidden = true;
       authGate.hidden = false;
       mainApp.hidden = true;
-    });
+    })();
+  } else {
+    authGate.hidden = false;
   }
 })();
