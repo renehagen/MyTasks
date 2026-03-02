@@ -12,6 +12,7 @@
   const authError = document.getElementById('auth-error');
   const mainApp = document.getElementById('main-app');
   const logoutBtn = document.getElementById('logout-btn');
+  const refreshBtn = document.getElementById('refresh-btn');
 
   const filterSearch = document.getElementById('filter-search');
   const filterStatus = document.getElementById('filter-status');
@@ -45,7 +46,7 @@
   const shoppingListEl = document.getElementById('shopping-list');
   const shoppingEmpty = document.getElementById('shopping-empty');
 
-  let currentView = 'shopping';
+  let currentView = localStorage.getItem('mytasks_current_view') || 'shopping';
 
   // --- API Client ---
   async function api(path, options = {}) {
@@ -87,7 +88,7 @@
       localStorage.setItem('mytasks_api_key', key);
       authGate.hidden = true;
       mainApp.hidden = false;
-      loadShoppingItems();
+      restoreActiveTab();
     } catch (e) {
       if (e.status === 401) {
         // Definitive auth failure - clear saved key
@@ -124,6 +125,15 @@
 
   apiKeyInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') authSubmit.click();
+  });
+
+  refreshBtn.addEventListener('click', () => {
+    if (currentView === 'tasks') {
+      loadTasks();
+    } else {
+      loadShoppingItems();
+    }
+    showToast('Refreshed');
   });
 
   logoutBtn.addEventListener('click', () => {
@@ -337,12 +347,27 @@
     }
   });
 
+  // --- Tab Restore ---
+  function restoreActiveTab() {
+    headerTabs.forEach(t => t.classList.toggle('active', t.dataset.view === currentView));
+    if (currentView === 'tasks') {
+      tasksView.hidden = false;
+      shoppingView.hidden = true;
+      loadTasks();
+    } else {
+      tasksView.hidden = true;
+      shoppingView.hidden = false;
+      loadShoppingItems();
+    }
+  }
+
   // --- Tab Navigation ---
   headerTabs.forEach(tab => {
     tab.addEventListener('click', () => {
       const view = tab.dataset.view;
       if (view === currentView) return;
       currentView = view;
+      localStorage.setItem('mytasks_current_view', view);
       headerTabs.forEach(t => t.classList.toggle('active', t.dataset.view === view));
       if (view === 'tasks') {
         tasksView.hidden = false;
