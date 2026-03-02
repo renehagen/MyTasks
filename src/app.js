@@ -69,15 +69,20 @@
 
   // --- Toast ---
   let toastTimer;
-  function showToast(message) {
+  function showToast(message, duration = 2500) {
     toastEl.textContent = message;
     toastEl.hidden = false;
     requestAnimationFrame(() => toastEl.classList.add('show'));
     clearTimeout(toastTimer);
-    toastTimer = setTimeout(() => {
-      toastEl.classList.remove('show');
-      setTimeout(() => { toastEl.hidden = true; }, 200);
-    }, 2500);
+    if (duration > 0) {
+      toastTimer = setTimeout(hideToast, duration);
+    }
+  }
+
+  function hideToast() {
+    clearTimeout(toastTimer);
+    toastEl.classList.remove('show');
+    setTimeout(() => { toastEl.hidden = true; }, 200);
   }
 
   // --- Auth ---
@@ -127,13 +132,16 @@
     if (e.key === 'Enter') authSubmit.click();
   });
 
-  refreshBtn.addEventListener('click', () => {
+  refreshBtn.addEventListener('click', async () => {
+    const start = Date.now();
+    showToast('Refreshing...', 0);
     if (currentView === 'tasks') {
-      loadTasks();
+      await loadTasks();
     } else {
-      loadShoppingItems();
+      await loadShoppingItems();
     }
-    showToast('Refreshed');
+    const elapsed = Date.now() - start;
+    setTimeout(hideToast, Math.max(0, 500 - elapsed));
   });
 
   logoutBtn.addEventListener('click', () => {
@@ -474,15 +482,14 @@
     if (!title) return;
 
     try {
-      shoppingAddInput.disabled = true;
+      shoppingAddInput.readOnly = true;
       await api('/shopping', { method: 'POST', body: JSON.stringify({ title }) });
       shoppingAddInput.value = '';
       loadShoppingItems();
     } catch (err) {
       showToast(err.message);
     } finally {
-      shoppingAddInput.disabled = false;
-      shoppingAddInput.focus();
+      shoppingAddInput.readOnly = false;
     }
   });
 

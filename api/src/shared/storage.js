@@ -224,7 +224,7 @@ async function createShoppingItem(data) {
   const now = new Date().toISOString();
 
   const existing = await listShoppingItems();
-  const maxSort = existing.reduce((max, item) => Math.max(max, item.sortOrder), 0);
+  const minSort = existing.reduce((min, item) => Math.min(min, item.sortOrder), SORT_ORDER_GAP);
 
   const entity = {
     partitionKey: PARTITION_KEY,
@@ -232,7 +232,7 @@ async function createShoppingItem(data) {
     category: 'shopping',
     title: data.title,
     checked: false,
-    sortOrder: maxSort + SORT_ORDER_GAP,
+    sortOrder: minSort - SORT_ORDER_GAP,
     status: '',
     priority: '',
     notes: '',
