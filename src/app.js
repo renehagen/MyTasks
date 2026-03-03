@@ -485,20 +485,22 @@
   }
 
   // Inline add
+  let addingItem = false;
   shoppingAddInput.addEventListener('keydown', async (e) => {
-    if (e.key !== 'Enter') return;
+    if (e.key !== 'Enter' || addingItem) return;
     const title = shoppingAddInput.value.trim();
     if (!title) return;
 
+    addingItem = true;
     try {
-      shoppingAddInput.readOnly = true;
       await api('/shopping', { method: 'POST', body: JSON.stringify({ title }) });
       shoppingAddInput.value = '';
-      loadShoppingItems();
+      await loadShoppingItems();
     } catch (err) {
       showToast(err.message);
     } finally {
-      shoppingAddInput.readOnly = false;
+      addingItem = false;
+      shoppingAddInput.focus();
     }
   });
 
