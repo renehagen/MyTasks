@@ -321,6 +321,14 @@ textarea {
   color: var(--text-secondary);
 }
 
+.task-row-title.due-today {
+  font-weight: 600;
+}
+
+.task-row-due.due-today {
+  font-weight: 600;
+}
+
 .task-row-due {
   font-size: 0.6875rem;
   color: var(--text-secondary);

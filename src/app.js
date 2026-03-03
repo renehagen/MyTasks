@@ -168,15 +168,24 @@
     return new Date(dateStr + 'T00:00:00') < today;
   }
 
+  function isToday(dateStr) {
+    if (!dateStr) return false;
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const d = new Date(dateStr + 'T00:00:00');
+    return d.getTime() === today.getTime();
+  }
+
   function renderTask(task) {
     const row = document.createElement('div');
     row.className = 'task-row';
     row.dataset.id = task.id;
 
     const isDone = task.status === 'done' || task.status === 'cancelled';
-    const titleClass = isDone ? ' done' : '';
+    const today = !isDone && isToday(task.dueDate);
+    const titleClass = isDone ? ' done' : today ? ' due-today' : '';
     const dueHtml = task.dueDate
-      ? `<span class="task-row-due${isOverdue(task.dueDate) && !isDone ? ' overdue' : ''}">${formatDate(task.dueDate)}</span>`
+      ? `<span class="task-row-due${isOverdue(task.dueDate) && !isDone ? ' overdue' : ''}${today ? ' due-today' : ''}">${formatDate(task.dueDate)}</span>`
       : '';
 
     row.innerHTML = `
