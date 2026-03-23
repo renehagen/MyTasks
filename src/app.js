@@ -45,6 +45,8 @@
   const shoppingAddInput = document.getElementById('shopping-add-input');
   const shoppingListEl = document.getElementById('shopping-list');
   const shoppingEmpty = document.getElementById('shopping-empty');
+  const suggestionBox = document.getElementById('shopping-suggestions');
+  let checkedItems = [];
 
   let currentView = localStorage.getItem('mytasks_current_view') || 'shopping';
 
@@ -446,6 +448,7 @@
 
       const unchecked = items.filter(i => !i.checked);
       const checked = items.filter(i => i.checked);
+      checkedItems = checked;
 
       for (const item of unchecked) {
         shoppingListEl.appendChild(renderShoppingItem(item));
@@ -486,15 +489,23 @@
 
   // Inline add
   let addingItem = false;
-  shoppingAddInput.addEventListener('keydown', async (e) => {
-    if (e.key !== 'Enter' || addingItem) return;
-    const title = shoppingAddInput.value.trim();
-    if (!title) return;
+  let selectedSuggestion = -1;
 
+  async function addOrReactivateItem(title) {
+    if (!title || addingItem) return;
     addingItem = true;
     try {
-      await api('/shopping', { method: 'POST', body: JSON.stringify({ title }) });
+      const match = checkedItems.find(i => i.title.toLowerCase() === title.toLowerCase());
+      if (match) {
+        await api(`/shopping/${match.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ checked: false })
+        });
+      } else {
+        await api('/shopping', { method: 'POST', body: JSON.stringify({ title }) });
+      }
       shoppingAddInput.value = '';
+      hideSuggestions();
       await loadShoppingItems();
     } catch (err) {
       showToast(err.message);
@@ -502,7 +513,72 @@
       addingItem = false;
       shoppingAddInput.focus();
     }
+  }
+
+  shoppingAddInput.addEventListener('keydown', async (e) => {
+    const items = suggestionBox.querySelectorAll('.suggestion-item');
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      selectedSuggestion = Math.min(selectedSuggestion + 1, items.length - 1);
+      updateSuggestionHighlight(items);
+      return;
+    }
+    if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      selectedSuggestion = Math.max(selectedSuggestion - 1, -1);
+      updateSuggestionHighlight(items);
+      return;
+    }
+    if (e.key === 'Escape') {
+      hideSuggestions();
+      return;
+    }
+    if (e.key !== 'Enter') return;
+    e.preventDefault();
+    if (selectedSuggestion >= 0 && items[selectedSuggestion]) {
+      shoppingAddInput.value = items[selectedSuggestion].textContent;
+    }
+    await addOrReactivateItem(shoppingAddInput.value.trim());
   });
+
+  shoppingAddInput.addEventListener('input', () => {
+    const query = shoppingAddInput.value.trim().toLowerCase();
+    if (!query) { hideSuggestions(); return; }
+    const matches = checkedItems
+      .filter(i => i.title.toLowerCase().includes(query))
+      .slice(0, 8);
+    if (matches.length === 0) { hideSuggestions(); return; }
+    suggestionBox.innerHTML = '';
+    selectedSuggestion = -1;
+    matches.forEach(item => {
+      const div = document.createElement('div');
+      div.className = 'suggestion-item';
+      div.textContent = item.title;
+      div.addEventListener('pointerdown', (e) => {
+        e.preventDefault();
+        shoppingAddInput.value = item.title;
+        addOrReactivateItem(item.title);
+      });
+      suggestionBox.appendChild(div);
+    });
+    suggestionBox.hidden = false;
+  });
+
+  shoppingAddInput.addEventListener('blur', () => {
+    setTimeout(() => hideSuggestions(), 150);
+  });
+
+  function hideSuggestions() {
+    suggestionBox.hidden = true;
+    suggestionBox.innerHTML = '';
+    selectedSuggestion = -1;
+  }
+
+  function updateSuggestionHighlight(items) {
+    items.forEach((el, i) => {
+      el.classList.toggle('active', i === selectedSuggestion);
+    });
+  }
 
   // --- Drag to Reorder ---
   let dragState = null;
