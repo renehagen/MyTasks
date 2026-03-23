@@ -546,7 +546,7 @@
     if (!query) { hideSuggestions(); return; }
     const matches = checkedItems
       .filter(i => i.title.toLowerCase().includes(query))
-      .slice(0, 8);
+      .slice(0, 5);
     if (matches.length === 0) { hideSuggestions(); return; }
     suggestionBox.innerHTML = '';
     selectedSuggestion = -1;
