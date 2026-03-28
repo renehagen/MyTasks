@@ -30,7 +30,9 @@
   const taskTitleField = document.getElementById('task-title');
   const taskStatusField = document.getElementById('task-status');
   const taskPriorityField = document.getElementById('task-priority');
+  const taskStartDateField = document.getElementById('task-start');
   const taskDueField = document.getElementById('task-due');
+  const taskWaitingField = document.getElementById('task-waiting');
   const taskNotesField = document.getElementById('task-notes');
   const deleteTaskBtn = document.getElementById('delete-task-btn');
   const cancelBtn = document.getElementById('cancel-btn');
@@ -184,15 +186,19 @@
     row.dataset.id = task.id;
 
     const isDone = task.status === 'done' || task.status === 'cancelled';
-    const today = !isDone && isToday(task.dueDate);
-    const titleClass = isDone ? ' done' : today ? ' due-today' : '';
+    const dueToday = !isDone && isToday(task.dueDate);
+    const titleClass = isDone ? ' done' : dueToday ? ' due-today' : '';
     const dueHtml = task.dueDate
-      ? `<span class="task-row-due${isOverdue(task.dueDate) && !isDone ? ' overdue' : ''}${today ? ' due-today' : ''}">${formatDate(task.dueDate)}</span>`
+      ? `<span class="task-row-due${isOverdue(task.dueDate) && !isDone ? ' overdue' : ''}${dueToday ? ' due-today' : ''}">${formatDate(task.dueDate)}</span>`
+      : '';
+    const tagHtml = task.tag
+      ? `<span class="task-row-tag ${task.tag}">${task.tag}</span>`
       : '';
 
     row.innerHTML = `
       <span class="task-row-priority ${task.priority}"></span>
       <span class="task-row-title${titleClass}">${escapeHtml(task.title)}</span>
+      ${tagHtml}
       ${dueHtml}
       <span class="task-row-status ${task.status}">${task.status}</span>
       <button class="task-row-check${isDone ? ' checked' : ''}" title="${isDone ? 'Reopen' : 'Mark done'}">&#x2713;</button>
@@ -279,7 +285,9 @@
     taskTitleField.value = '';
     taskStatusField.value = 'todo';
     taskPriorityField.value = 'medium';
+    taskStartDateField.value = '';
     taskDueField.value = '';
+    taskWaitingField.checked = false;
     taskNotesField.value = '';
     deleteTaskBtn.hidden = true;
     openModal();
@@ -291,7 +299,9 @@
     taskTitleField.value = task.title;
     taskStatusField.value = task.status;
     taskPriorityField.value = task.priority;
+    taskStartDateField.value = task.startDate || '';
     taskDueField.value = task.dueDate || '';
+    taskWaitingField.checked = task.waiting || false;
     taskNotesField.value = task.notes || '';
     deleteTaskBtn.hidden = false;
     openModal();
@@ -329,7 +339,9 @@
       title: taskTitleField.value.trim(),
       status: taskStatusField.value,
       priority: taskPriorityField.value,
+      startDate: taskStartDateField.value || null,
       dueDate: taskDueField.value || null,
+      waiting: taskWaitingField.checked,
       notes: taskNotesField.value.trim()
     };
 

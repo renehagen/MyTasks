@@ -86,7 +86,9 @@ app.http('createTask', {
         status: body.status,
         priority: body.priority,
         notes: body.notes,
-        dueDate: body.dueDate
+        startDate: body.startDate,
+        dueDate: body.dueDate,
+        waiting: body.waiting
       });
 
       return { status: 201, jsonBody: task };
@@ -122,7 +124,9 @@ app.http('updateTask', {
         status: body.status,
         priority: body.priority,
         notes: body.notes,
-        dueDate: body.dueDate
+        startDate: body.startDate,
+        dueDate: body.dueDate,
+        waiting: body.waiting
       });
 
       if (!task) {

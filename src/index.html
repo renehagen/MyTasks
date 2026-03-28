@@ -122,9 +122,21 @@
               </select>
             </div>
           </div>
-          <div class="form-group">
-            <label for="task-due">Due Date</label>
-            <input type="date" id="task-due">
+          <div class="form-row">
+            <div class="form-group">
+              <label for="task-start">Start Date</label>
+              <input type="date" id="task-start">
+            </div>
+            <div class="form-group">
+              <label for="task-due">Due Date</label>
+              <input type="date" id="task-due">
+            </div>
+          </div>
+          <div class="form-group form-toggle">
+            <label class="toggle-label">
+              <input type="checkbox" id="task-waiting">
+              <span>Waiting on someone else</span>
+            </label>
           </div>
           <div class="form-group">
             <label for="task-notes">Notes</label>

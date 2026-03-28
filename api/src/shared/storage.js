@@ -32,16 +32,32 @@ async function ensureTable() {
 }
 
 function entityToTask(entity) {
-  return {
+  const today = new Date().toISOString().slice(0, 10);
+  const task = {
     id: entity.rowKey,
     title: entity.title,
     status: entity.status,
     priority: entity.priority,
     notes: entity.notes || '',
+    startDate: entity.startDate || null,
     dueDate: entity.dueDate || null,
+    waiting: entity.waiting === true,
     createdAt: entity.createdAt,
     updatedAt: entity.updatedAt
   };
+
+  const active = task.status !== 'done' && task.status !== 'cancelled';
+  if (active && task.waiting) {
+    task.tag = 'waiting';
+  } else if (active && task.dueDate && task.dueDate < today) {
+    task.tag = 'overdue';
+  } else if (active && task.startDate && task.startDate <= today) {
+    task.tag = 'pending';
+  } else {
+    task.tag = null;
+  }
+
+  return task;
 }
 
 async function listTasks(filters = {}) {
@@ -130,7 +146,9 @@ async function createTask(data) {
     status: data.status || 'todo',
     priority: data.priority || 'medium',
     notes: data.notes || '',
+    startDate: data.startDate || '',
     dueDate: data.dueDate || '',
+    waiting: data.waiting || false,
     createdAt: now,
     updatedAt: now
   };
@@ -153,7 +171,9 @@ async function updateTask(id, data) {
     status: data.status !== undefined ? data.status : existing.status,
     priority: data.priority !== undefined ? data.priority : existing.priority,
     notes: data.notes !== undefined ? data.notes : existing.notes,
+    startDate: data.startDate !== undefined ? data.startDate : existing.startDate,
     dueDate: data.dueDate !== undefined ? data.dueDate : existing.dueDate,
+    waiting: data.waiting !== undefined ? data.waiting : existing.waiting,
     createdAt: existing.createdAt,
     updatedAt: new Date().toISOString()
   };
@@ -236,6 +256,7 @@ async function createShoppingItem(data) {
     status: '',
     priority: '',
     notes: '',
+    startDate: '',
     dueDate: '',
     createdAt: now,
     updatedAt: now
