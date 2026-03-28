@@ -329,6 +329,26 @@ textarea {
   font-weight: 600;
 }
 
+.show-done-link {
+  text-align: center;
+  padding: 0.625rem 0.75rem;
+  border-top: 1px solid var(--border);
+}
+
+.btn-link {
+  font-family: inherit;
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0;
+}
+
+.btn-link:hover {
+  color: var(--primary);
+}
+
 .task-row-tag {
   font-size: 0.5625rem;
   font-weight: 600;

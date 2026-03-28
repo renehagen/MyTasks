@@ -244,13 +244,29 @@
 
     const qs = params.toString();
     try {
-      const tasks = await api(`/tasks${qs ? '?' + qs : ''}`);
-      taskListEl.innerHTML = '';
-      emptyState.hidden = tasks.length > 0;
-      taskListEl.hidden = tasks.length === 0;
+      const allTasks = await api(`/tasks${qs ? '?' + qs : ''}`);
+      const activeTasks = allTasks.filter(t => t.status !== 'done' && t.status !== 'cancelled');
+      const doneTasks = allTasks.filter(t => t.status === 'done' || t.status === 'cancelled');
 
-      for (const task of tasks) {
+      taskListEl.innerHTML = '';
+      emptyState.hidden = activeTasks.length > 0 || doneTasks.length > 0;
+      taskListEl.hidden = activeTasks.length === 0 && doneTasks.length === 0;
+
+      for (const task of activeTasks) {
         taskListEl.appendChild(renderTask(task));
+      }
+
+      if (doneTasks.length > 0) {
+        const showDoneLink = document.createElement('div');
+        showDoneLink.className = 'show-done-link';
+        showDoneLink.innerHTML = `<button class="btn-link">${doneTasks.length} completed</button>`;
+        showDoneLink.querySelector('button').addEventListener('click', () => {
+          showDoneLink.remove();
+          for (const task of doneTasks) {
+            taskListEl.appendChild(renderTask(task));
+          }
+        });
+        taskListEl.appendChild(showDoneLink);
       }
     } catch (e) {
       showToast('Failed to load tasks');
