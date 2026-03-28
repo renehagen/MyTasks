@@ -85,14 +85,16 @@ async function listTasks(filters = {}) {
   const today = new Date().toISOString().slice(0, 10);
 
   function sortGroup(task) {
+    if (task.tag === 'overdue') return 0;
+    if (task.tag === 'pending') return 1;
+    if (task.tag === 'waiting') return 2;
     const active = task.status !== 'done' && task.status !== 'cancelled' && task.status !== 'backlog';
-    const overdue = active && task.dueDate && task.dueDate < today;
-    if (overdue) return 0;
-    if (task.status === 'in-progress') return 1;
-    if (task.status === 'todo') return 2;
-    if (task.status === 'done' || task.status === 'cancelled') return 3;
-    if (task.status === 'backlog') return 4;
-    return 5;
+    if (active && task.dueDate) return 3;
+    if (task.status === 'in-progress') return 4;
+    if (task.status === 'todo') return 5;
+    if (task.status === 'done' || task.status === 'cancelled') return 6;
+    if (task.status === 'backlog') return 7;
+    return 8;
   }
 
   tasks.sort((a, b) => {
