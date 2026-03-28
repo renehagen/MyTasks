@@ -183,14 +183,25 @@ async function handleToolCall(name, args) {
       if (!args.title) {
         return { content: [{ type: 'text', text: 'Title is required' }], isError: true };
       }
-      const task = await storage.createTask(args);
+      console.log('MCP create_task args:', JSON.stringify(args));
+      const task = await storage.createTask({
+        title: args.title,
+        status: args.status,
+        priority: args.priority,
+        notes: args.notes,
+        startDate: args.startDate,
+        dueDate: args.dueDate,
+        waiting: args.waiting === true
+      });
       return { content: [{ type: 'text', text: JSON.stringify(task, null, 2) }] };
     }
     case 'update_task': {
       if (!args.id) {
         return { content: [{ type: 'text', text: 'Task ID is required' }], isError: true };
       }
+      console.log('MCP update_task args:', JSON.stringify(args));
       const { id, ...updates } = args;
+      if (updates.waiting !== undefined) updates.waiting = updates.waiting === true;
       const task = await storage.updateTask(id, updates);
       if (!task) {
         return { content: [{ type: 'text', text: 'Task not found' }], isError: true };
