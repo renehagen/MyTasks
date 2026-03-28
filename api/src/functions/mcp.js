@@ -58,7 +58,9 @@ const TOOL_DEFINITIONS = [
           description: 'Task priority (default: medium)'
         },
         notes: { type: 'string', description: 'Additional notes' },
-        dueDate: { type: 'string', description: 'Due date in YYYY-MM-DD format' }
+        startDate: { type: 'string', description: 'Start date ("do date") in YYYY-MM-DD format' },
+        dueDate: { type: 'string', description: 'Due date (hard deadline) in YYYY-MM-DD format' },
+        waiting: { type: 'boolean', description: 'Whether the task is waiting on someone else (default: false)' }
       },
       required: ['title']
     }
@@ -82,7 +84,9 @@ const TOOL_DEFINITIONS = [
           description: 'New task priority'
         },
         notes: { type: 'string', description: 'New notes' },
-        dueDate: { type: 'string', description: 'New due date in YYYY-MM-DD format' }
+        startDate: { type: 'string', description: 'New start date ("do date") in YYYY-MM-DD format' },
+        dueDate: { type: 'string', description: 'New due date (hard deadline) in YYYY-MM-DD format' },
+        waiting: { type: 'boolean', description: 'Whether the task is waiting on someone else' }
       },
       required: ['id']
     }
