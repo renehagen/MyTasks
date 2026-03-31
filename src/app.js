@@ -455,6 +455,10 @@
       }
     });
 
+    row.querySelector('.shopping-item-title').addEventListener('click', () => {
+      startEditShoppingItem(row, item);
+    });
+
     row.querySelector('.shopping-item-delete').addEventListener('click', async () => {
       try {
         await api(`/shopping/${item.id}`, { method: 'DELETE' });
@@ -466,6 +470,45 @@
     });
 
     return row;
+  }
+
+  function startEditShoppingItem(row, item) {
+    if (row.querySelector('.shopping-item-edit')) return;
+    const titleEl = row.querySelector('.shopping-item-title');
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'shopping-item-edit';
+    input.value = item.title;
+    titleEl.replaceWith(input);
+    input.focus();
+    input.select();
+
+    let saved = false;
+    async function save() {
+      if (saved) return;
+      saved = true;
+      const newTitle = input.value.trim();
+      if (!newTitle || newTitle === item.title) {
+        input.replaceWith(titleEl);
+        return;
+      }
+      try {
+        await api(`/shopping/${item.id}`, {
+          method: 'PUT',
+          body: JSON.stringify({ title: newTitle })
+        });
+        loadShoppingItems();
+      } catch (err) {
+        showToast(err.message);
+        input.replaceWith(titleEl);
+      }
+    }
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); save(); }
+      if (e.key === 'Escape') { saved = true; input.replaceWith(titleEl); }
+    });
+    input.addEventListener('blur', save);
   }
 
   async function loadShoppingItems() {

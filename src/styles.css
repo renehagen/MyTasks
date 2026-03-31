@@ -677,6 +677,19 @@ textarea {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  cursor: text;
+}
+
+.shopping-item-edit {
+  flex: 1;
+  font-size: 1.25rem;
+  font-weight: 600;
+  min-width: 0;
+  padding: 0.125rem 0.25rem;
+  border: 1px solid var(--primary);
+  border-radius: 4px;
+  outline: none;
+  font-family: inherit;
 }
 
 .shopping-item.checked-item {
