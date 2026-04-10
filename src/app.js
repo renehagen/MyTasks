@@ -764,12 +764,22 @@
 
   // --- Init ---
   // Allow passing API key via URL query parameter: ?key=xxx
+  // Allow deep-linking to a view via path: /tasks or /shopping
   const urlParams = new URLSearchParams(window.location.search);
   const urlKey = urlParams.get('key');
   if (urlKey) {
     apiKey = urlKey;
     localStorage.setItem('mytasks_api_key', urlKey);
-    // Clean the key from the URL without reloading
+  }
+
+  const urlPath = window.location.pathname.replace(/\/$/, '').split('/').pop();
+  if (urlPath === 'tasks' || urlPath === 'shopping') {
+    currentView = urlPath;
+    localStorage.setItem('mytasks_current_view', urlPath);
+  }
+
+  // Clean key from URL, normalize path back to /
+  if (urlKey) {
     window.history.replaceState({}, '', window.location.pathname);
   }
 
