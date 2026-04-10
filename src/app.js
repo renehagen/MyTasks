@@ -763,6 +763,16 @@
   }
 
   // --- Init ---
+  // Allow passing API key via URL query parameter: ?key=xxx
+  const urlParams = new URLSearchParams(window.location.search);
+  const urlKey = urlParams.get('key');
+  if (urlKey) {
+    apiKey = urlKey;
+    localStorage.setItem('mytasks_api_key', urlKey);
+    // Clean the key from the URL without reloading
+    window.history.replaceState({}, '', window.location.pathname);
+  }
+
   if (apiKey) {
     splash.hidden = false;
     (async function autoLogin() {
