@@ -37,9 +37,10 @@
     <div id="main-app" hidden>
       <header>
         <div class="header-content">
-          <nav class="header-tabs">
-            <button class="tab active" data-view="shopping">Shopping</button>
+          <nav class="header-tabs" id="header-tabs">
+            <button class="tab active" data-view="shopping" data-list-id="">Shopping</button>
             <button class="tab" data-view="tasks">Tasks</button>
+            <button class="tab tab-add" id="add-list-btn" title="New list">+</button>
           </nav>
           <div class="header-actions">
             <button id="refresh-btn" class="btn btn-ghost" title="Refresh">&#x21bb;</button>
@@ -147,6 +148,28 @@
             <div class="form-actions-right">
               <button type="button" id="cancel-btn" class="btn btn-ghost">Cancel</button>
               <button type="submit" class="btn btn-primary">Save</button>
+            </div>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <!-- New List Modal -->
+    <div id="list-modal" class="modal-overlay" hidden>
+      <div class="modal">
+        <div class="modal-header">
+          <h2>New list</h2>
+          <button id="list-modal-close" class="btn btn-ghost">&#x2715;</button>
+        </div>
+        <form id="list-form">
+          <div class="form-group">
+            <label for="list-name">Name</label>
+            <input type="text" id="list-name" required placeholder="e.g. Packing, Party, Hardware" autocomplete="off">
+          </div>
+          <div class="form-actions">
+            <div class="form-actions-right">
+              <button type="button" id="list-cancel-btn" class="btn btn-ghost">Cancel</button>
+              <button type="submit" class="btn btn-primary">Create</button>
             </div>
           </div>
         </form>

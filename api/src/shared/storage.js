@@ -77,7 +77,7 @@ async function listTasks(filters = {}) {
 
   const tasks = [];
   for await (const entity of entities) {
-    if (entity.category === 'shopping') continue;
+    if (entity.category === 'shopping' || entity.category === 'list') continue;
     tasks.push(entityToTask(entity));
   }
 
@@ -213,6 +213,7 @@ async function searchTasks(query) {
 function entityToShoppingItem(entity) {
   return {
     id: entity.rowKey,
+    listId: entity.listId || '',
     title: entity.title,
     checked: entity.checked === true,
     sortOrder: entity.sortOrder || 0,
@@ -221,14 +222,87 @@ function entityToShoppingItem(entity) {
   };
 }
 
-async function listShoppingItems() {
+function entityToList(entity) {
+  return {
+    id: entity.rowKey,
+    name: entity.name,
+    sortOrder: entity.sortOrder || 0,
+    createdAt: entity.createdAt
+  };
+}
+
+async function listLists() {
+  await ensureTable();
+  const client = getTableClient();
+  const filter = `PartitionKey eq '${PARTITION_KEY}' and category eq 'list'`;
+  const entities = client.listEntities({ queryOptions: { filter } });
+
+  const lists = [];
+  for await (const entity of entities) {
+    lists.push(entityToList(entity));
+  }
+  lists.sort((a, b) => a.sortOrder - b.sortOrder);
+  return lists;
+}
+
+async function createList(data) {
+  await ensureTable();
+  const client = getTableClient();
+  const now = new Date().toISOString();
+
+  const existing = await listLists();
+  const maxSort = existing.reduce((max, l) => Math.max(max, l.sortOrder), 0);
+
+  const entity = {
+    partitionKey: PARTITION_KEY,
+    rowKey: uuidv4(),
+    category: 'list',
+    name: data.name,
+    sortOrder: maxSort + SORT_ORDER_GAP,
+    createdAt: now
+  };
+
+  await client.createEntity(entity);
+  return entityToList(entity);
+}
+
+async function deleteList(id) {
+  await ensureTable();
+  const client = getTableClient();
+
+  const items = await listShoppingItems(id);
+  for (const item of items) {
+    try {
+      await client.deleteEntity(PARTITION_KEY, item.id);
+    } catch (err) {
+      if (err.statusCode !== 404) throw err;
+    }
+  }
+
+  try {
+    await client.deleteEntity(PARTITION_KEY, id);
+    return true;
+  } catch (err) {
+    if (err.statusCode === 404) return false;
+    throw err;
+  }
+}
+
+function normalizeListId(listId) {
+  return listId && listId !== 'shopping' ? listId : '';
+}
+
+async function listShoppingItems(listId) {
   await ensureTable();
   const client = getTableClient();
   const filter = `PartitionKey eq '${PARTITION_KEY}' and category eq 'shopping'`;
   const entities = client.listEntities({ queryOptions: { filter } });
 
+  const normalized = normalizeListId(listId);
   const items = [];
   for await (const entity of entities) {
+    const itemListId = entity.listId || '';
+    if (itemListId !== normalized) continue;
     items.push(entityToShoppingItem(entity));
   }
 
@@ -245,13 +319,15 @@ async function createShoppingItem(data) {
   const client = getTableClient();
   const now = new Date().toISOString();
 
-  const existing = await listShoppingItems();
+  const normalized = normalizeListId(data.listId);
+  const existing = await listShoppingItems(normalized);
   const minSort = existing.reduce((min, item) => Math.min(min, item.sortOrder), SORT_ORDER_GAP);
 
   const entity = {
     partitionKey: PARTITION_KEY,
     rowKey: uuidv4(),
     category: 'shopping',
+    listId: normalized,
     title: data.title,
     checked: false,
     sortOrder: minSort - SORT_ORDER_GAP,
@@ -284,6 +360,7 @@ async function updateShoppingItem(id, data) {
     partitionKey: PARTITION_KEY,
     rowKey: id,
     category: 'shopping',
+    listId: existing.listId || '',
     title: data.title !== undefined ? data.title : existing.title,
     checked: data.checked !== undefined ? data.checked : existing.checked,
     sortOrder: data.sortOrder !== undefined ? data.sortOrder : existing.sortOrder,
@@ -299,7 +376,7 @@ async function updateShoppingItem(id, data) {
   return entityToShoppingItem(updated);
 }
 
-async function reorderShoppingItems(orderedIds) {
+async function reorderShoppingItems(orderedIds, listId) {
   await ensureTable();
   const client = getTableClient();
   const now = new Date().toISOString();
@@ -318,10 +395,11 @@ async function reorderShoppingItems(orderedIds) {
     await client.submitTransaction(actions);
   }
 
-  return listShoppingItems();
+  return listShoppingItems(listId);
 }
 
 module.exports = {
   listTasks, getTask, createTask, updateTask, deleteTask, searchTasks,
-  listShoppingItems, createShoppingItem, updateShoppingItem, reorderShoppingItems
+  listShoppingItems, createShoppingItem, updateShoppingItem, reorderShoppingItems,
+  listLists, createList, deleteList
 };

@@ -39,9 +39,17 @@
   const toastEl = document.getElementById('toast');
 
   // Tab navigation
-  const headerTabs = document.querySelectorAll('.tab');
+  const headerTabsEl = document.getElementById('header-tabs');
+  const addListBtn = document.getElementById('add-list-btn');
   const tasksView = document.getElementById('tasks-view');
   const shoppingView = document.getElementById('shopping-view');
+
+  // List modal
+  const listModal = document.getElementById('list-modal');
+  const listModalClose = document.getElementById('list-modal-close');
+  const listForm = document.getElementById('list-form');
+  const listNameField = document.getElementById('list-name');
+  const listCancelBtn = document.getElementById('list-cancel-btn');
 
   // Shopping view
   const shoppingAddInput = document.getElementById('shopping-add-input');
@@ -49,8 +57,10 @@
   const shoppingEmpty = document.getElementById('shopping-empty');
   const suggestionBox = document.getElementById('shopping-suggestions');
   let checkedItems = [];
+  let customLists = [];
 
   let currentView = localStorage.getItem('mytasks_current_view') || 'shopping';
+  let currentListId = localStorage.getItem('mytasks_current_list_id') || '';
 
   // --- API Client ---
   async function api(path, options = {}) {
@@ -142,7 +152,7 @@
     if (currentView === 'tasks') {
       await loadTasks();
     } else {
-      await loadShoppingItems();
+      await Promise.all([loadLists(), loadShoppingItems()]);
     }
     const elapsed = Date.now() - start;
     setTimeout(hideToast, Math.max(0, 500 - elapsed));
@@ -394,10 +404,44 @@
     }
   });
 
-  // --- Tab Restore ---
-  function restoreActiveTab() {
-    headerTabs.forEach(t => t.classList.toggle('active', t.dataset.view === currentView));
-    if (currentView === 'tasks') {
+  // --- Tabs (dynamic) ---
+  function renderTabs() {
+    // Remove any existing custom-list tabs
+    headerTabsEl.querySelectorAll('.tab-list').forEach(el => el.remove());
+
+    // Insert custom list tabs before the Tasks tab
+    const tasksTab = headerTabsEl.querySelector('[data-view="tasks"]');
+    for (const list of customLists) {
+      const tab = document.createElement('button');
+      tab.className = 'tab tab-list';
+      tab.dataset.view = 'list';
+      tab.dataset.listId = list.id;
+      tab.innerHTML = `<span class="tab-label"></span><button class="tab-close" title="Delete list">&#x2715;</button>`;
+      tab.querySelector('.tab-label').textContent = list.name;
+      headerTabsEl.insertBefore(tab, tasksTab);
+    }
+    applyActiveTab();
+  }
+
+  function applyActiveTab() {
+    const tabs = headerTabsEl.querySelectorAll('.tab:not(.tab-add)');
+    tabs.forEach(t => {
+      const view = t.dataset.view;
+      let active = false;
+      if (currentView === 'tasks' && view === 'tasks') active = true;
+      else if (currentView === 'shopping' && view === 'shopping' && !currentListId) active = true;
+      else if (currentView === 'shopping' && view === 'list' && t.dataset.listId === currentListId) active = true;
+      t.classList.toggle('active', active);
+    });
+  }
+
+  function activateView(view, listId) {
+    currentView = view;
+    currentListId = listId || '';
+    localStorage.setItem('mytasks_current_view', view);
+    localStorage.setItem('mytasks_current_list_id', currentListId);
+    applyActiveTab();
+    if (view === 'tasks') {
       tasksView.hidden = false;
       shoppingView.hidden = true;
       loadTasks();
@@ -408,24 +452,101 @@
     }
   }
 
-  // --- Tab Navigation ---
-  headerTabs.forEach(tab => {
-    tab.addEventListener('click', () => {
-      const view = tab.dataset.view;
-      if (view === currentView) return;
-      currentView = view;
-      localStorage.setItem('mytasks_current_view', view);
-      headerTabs.forEach(t => t.classList.toggle('active', t.dataset.view === view));
-      if (view === 'tasks') {
-        tasksView.hidden = false;
-        shoppingView.hidden = true;
-        loadTasks();
-      } else {
-        tasksView.hidden = true;
-        shoppingView.hidden = false;
-        loadShoppingItems();
+  async function restoreActiveTab() {
+    await loadLists();
+    // If stored list id no longer exists, fall back to Shopping
+    if (currentListId && !customLists.some(l => l.id === currentListId)) {
+      currentListId = '';
+      localStorage.setItem('mytasks_current_list_id', '');
+    }
+    activateView(currentView, currentListId);
+  }
+
+  // Delegated tab clicks (covers dynamically added list tabs)
+  headerTabsEl.addEventListener('click', async (e) => {
+    const closeBtn = e.target.closest('.tab-close');
+    if (closeBtn) {
+      e.stopPropagation();
+      const tab = closeBtn.closest('.tab-list');
+      const listId = tab.dataset.listId;
+      const list = customLists.find(l => l.id === listId);
+      if (!list) return;
+      if (!confirm(`Delete the list "${list.name}" and all its items?`)) return;
+      try {
+        await api(`/lists/${listId}`, { method: 'DELETE' });
+        showToast('List deleted');
+        if (currentListId === listId) {
+          currentListId = '';
+          localStorage.setItem('mytasks_current_list_id', '');
+          currentView = 'shopping';
+          localStorage.setItem('mytasks_current_view', 'shopping');
+        }
+        await loadLists();
+        activateView(currentView, currentListId);
+      } catch (err) {
+        showToast(err.message);
       }
-    });
+      return;
+    }
+
+    const tab = e.target.closest('.tab');
+    if (!tab || tab.classList.contains('tab-add')) return;
+    const view = tab.dataset.view;
+    if (view === 'list') {
+      const listId = tab.dataset.listId;
+      if (currentView === 'shopping' && currentListId === listId) return;
+      activateView('shopping', listId);
+    } else if (view === 'tasks') {
+      if (currentView === 'tasks') return;
+      activateView('tasks', '');
+    } else {
+      // shopping
+      if (currentView === 'shopping' && !currentListId) return;
+      activateView('shopping', '');
+    }
+  });
+
+  // --- Lists ---
+  async function loadLists() {
+    try {
+      customLists = await api('/lists');
+    } catch (err) {
+      customLists = [];
+    }
+    renderTabs();
+  }
+
+  function openListModal() {
+    listNameField.value = '';
+    listModal.hidden = false;
+    setTimeout(() => listNameField.focus(), 0);
+  }
+
+  function closeListModal() {
+    listModal.hidden = true;
+    listForm.reset();
+  }
+
+  addListBtn.addEventListener('click', openListModal);
+  listModalClose.addEventListener('click', closeListModal);
+  listCancelBtn.addEventListener('click', closeListModal);
+  listModal.addEventListener('click', (e) => {
+    if (e.target === listModal) closeListModal();
+  });
+
+  listForm.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    const name = listNameField.value.trim();
+    if (!name) return;
+    try {
+      const list = await api('/lists', { method: 'POST', body: JSON.stringify({ name }) });
+      showToast('List created');
+      closeListModal();
+      await loadLists();
+      activateView('shopping', list.id);
+    } catch (err) {
+      showToast(err.message);
+    }
   });
 
   // --- Shopping List ---
@@ -513,7 +634,8 @@
 
   async function loadShoppingItems() {
     try {
-      const items = await api('/shopping');
+      const qs = currentListId ? `?listId=${encodeURIComponent(currentListId)}` : '';
+      const items = await api('/shopping' + qs);
       shoppingListEl.innerHTML = '';
       shoppingEmpty.hidden = items.length > 0;
 
@@ -573,7 +695,10 @@
           body: JSON.stringify({ checked: false })
         });
       } else {
-        await api('/shopping', { method: 'POST', body: JSON.stringify({ title }) });
+        await api('/shopping', {
+          method: 'POST',
+          body: JSON.stringify({ title, listId: currentListId || '' })
+        });
       }
       shoppingAddInput.value = '';
       hideSuggestions();
@@ -751,7 +876,7 @@
       try {
         await api('/shopping/reorder', {
           method: 'PUT',
-          body: JSON.stringify({ orderedIds })
+          body: JSON.stringify({ orderedIds, listId: currentListId || '' })
         });
       } catch (err) {
         showToast('Failed to save order');
@@ -775,7 +900,9 @@
   const urlPath = window.location.pathname.replace(/\/$/, '').split('/').pop();
   if (urlPath === 'tasks' || urlPath === 'shopping') {
     currentView = urlPath;
+    currentListId = '';
     localStorage.setItem('mytasks_current_view', urlPath);
+    localStorage.setItem('mytasks_current_list_id', '');
   }
 
   // Clean key from URL, normalize path back to /

@@ -158,6 +158,51 @@ header {
   border-bottom-color: #fbbc04;
 }
 
+.tab.tab-add {
+  padding: 0.75rem 0.625rem;
+  font-size: 1.125rem;
+  font-weight: 400;
+  color: var(--text-secondary);
+}
+
+.tab.tab-list {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.tab-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  opacity: 0.5;
+  font-size: 0.7rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.tab-close:hover {
+  opacity: 1;
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.header-tabs {
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.header-tabs::-webkit-scrollbar {
+  display: none;
+}
+
 /* Filters */
 .filters {
   display: flex;

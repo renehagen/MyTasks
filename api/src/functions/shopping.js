@@ -12,7 +12,8 @@ app.http('listShopping', {
     if (!auth.valid) return unauthorizedResponse(auth);
 
     try {
-      const items = await storage.listShoppingItems();
+      const listId = request.query.get('listId') || '';
+      const items = await storage.listShoppingItems(listId);
       return { jsonBody: items };
     } catch (err) {
       context.error('listShopping error:', err);
@@ -35,7 +36,10 @@ app.http('createShopping', {
       if (!body.title || !body.title.trim()) {
         return { status: 400, jsonBody: { error: 'Title is required' } };
       }
-      const item = await storage.createShoppingItem({ title: body.title.trim() });
+      const item = await storage.createShoppingItem({
+        title: body.title.trim(),
+        listId: body.listId || ''
+      });
       return { status: 201, jsonBody: item };
     } catch (err) {
       context.error('createShopping error:', err);
@@ -58,7 +62,7 @@ app.http('reorderShopping', {
       if (!Array.isArray(body.orderedIds)) {
         return { status: 400, jsonBody: { error: 'orderedIds array is required' } };
       }
-      const items = await storage.reorderShoppingItems(body.orderedIds);
+      const items = await storage.reorderShoppingItems(body.orderedIds, body.listId || '');
       return { jsonBody: items };
     } catch (err) {
       context.error('reorderShopping error:', err);
