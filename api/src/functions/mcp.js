@@ -115,23 +115,29 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'list_shopping_items',
-    description: 'List all shopping list items. Returns items sorted with unchecked first, then checked.',
-    inputSchema: { type: 'object', properties: {} }
-  },
-  {
-    name: 'create_shopping_item',
-    description: 'Add a new item to the shopping list.',
+    description: 'List items on a checklist, sorted with unchecked first. Omit listId (or pass empty string) for the fixed Shopping list; otherwise pass a custom list id from list_lists.',
     inputSchema: {
       type: 'object',
       properties: {
-        title: { type: 'string', description: 'Item name (required)' }
+        listId: { type: 'string', description: 'Custom list ID. Omit or empty string for the Shopping list.' }
+      }
+    }
+  },
+  {
+    name: 'create_shopping_item',
+    description: 'Add a new item to a checklist. Defaults to the fixed Shopping list unless listId is provided.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        title: { type: 'string', description: 'Item name (required)' },
+        listId: { type: 'string', description: 'Custom list ID. Omit or empty string for the Shopping list.' }
       },
       required: ['title']
     }
   },
   {
     name: 'update_shopping_item',
-    description: 'Update a shopping list item. Can change title or checked status.',
+    description: 'Update a checklist item. Can change title or checked status.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -144,11 +150,38 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'delete_shopping_item',
-    description: 'Delete a shopping list item by ID.',
+    description: 'Delete a checklist item by ID.',
     inputSchema: {
       type: 'object',
       properties: {
         id: { type: 'string', description: 'The item ID' }
+      },
+      required: ['id']
+    }
+  },
+  {
+    name: 'list_lists',
+    description: 'List all custom checklists (excluding the fixed Shopping list). Each entry has { id, name, sortOrder, createdAt }.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'create_list',
+    description: 'Create a new custom checklist. The returned id can be passed as listId to the shopping-item tools.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Name of the list (required)' }
+      },
+      required: ['name']
+    }
+  },
+  {
+    name: 'delete_list',
+    description: 'Delete a custom checklist and all its items. Cannot be used on the fixed Shopping list.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'The list ID' }
       },
       required: ['id']
     }
@@ -223,15 +256,39 @@ async function handleToolCall(name, args) {
       return { content: [{ type: 'text', text: JSON.stringify(tasks, null, 2) }] };
     }
     case 'list_shopping_items': {
-      const items = await storage.listShoppingItems();
+      const items = await storage.listShoppingItems(args.listId || '');
       return { content: [{ type: 'text', text: JSON.stringify(items, null, 2) }] };
     }
     case 'create_shopping_item': {
       if (!args.title) {
         return { content: [{ type: 'text', text: 'Title is required' }], isError: true };
       }
-      const item = await storage.createShoppingItem({ title: args.title });
+      const item = await storage.createShoppingItem({
+        title: args.title,
+        listId: args.listId || ''
+      });
       return { content: [{ type: 'text', text: JSON.stringify(item, null, 2) }] };
+    }
+    case 'list_lists': {
+      const lists = await storage.listLists();
+      return { content: [{ type: 'text', text: JSON.stringify(lists, null, 2) }] };
+    }
+    case 'create_list': {
+      if (!args.name) {
+        return { content: [{ type: 'text', text: 'Name is required' }], isError: true };
+      }
+      const list = await storage.createList({ name: args.name });
+      return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
+    }
+    case 'delete_list': {
+      if (!args.id) {
+        return { content: [{ type: 'text', text: 'List ID is required' }], isError: true };
+      }
+      const didDelete = await storage.deleteList(args.id);
+      if (!didDelete) {
+        return { content: [{ type: 'text', text: 'List not found' }], isError: true };
+      }
+      return { content: [{ type: 'text', text: `List ${args.id} deleted successfully` }] };
     }
     case 'update_shopping_item': {
       if (!args.id) {
