@@ -45,6 +45,51 @@ app.http('createList', {
   }
 });
 
+// PUT /api/lists/:id
+app.http('updateList', {
+  methods: ['PUT'],
+  authLevel: 'anonymous',
+  route: 'lists/{id}',
+  handler: async (request, context) => {
+    const auth = validateApiKey(request);
+    if (!auth.valid) return unauthorizedResponse(auth);
+
+    try {
+      const id = request.params.id;
+      const body = await request.json();
+      const data = {};
+
+      if (body.name !== undefined) {
+        const name = (body.name || '').trim();
+        if (!name) {
+          return { status: 400, jsonBody: { error: 'Name is required' } };
+        }
+        data.name = name;
+      }
+
+      if (body.hidden !== undefined) {
+        if (typeof body.hidden !== 'boolean') {
+          return { status: 400, jsonBody: { error: 'Hidden must be a boolean' } };
+        }
+        data.hidden = body.hidden;
+      }
+
+      if (Object.keys(data).length === 0) {
+        return { status: 400, jsonBody: { error: 'No updates provided' } };
+      }
+
+      const list = await storage.updateList(id, data);
+      if (!list) {
+        return { status: 404, jsonBody: { error: 'List not found' } };
+      }
+      return { jsonBody: list };
+    } catch (err) {
+      context.error('updateList error:', err);
+      return { status: 500, jsonBody: { error: 'Failed to update list' } };
+    }
+  }
+});
+
 // DELETE /api/lists/:id
 app.http('deleteList', {
   methods: ['DELETE'],

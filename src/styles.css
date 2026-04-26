@@ -541,6 +541,11 @@ textarea {
   font-weight: 600;
 }
 
+.modal-message {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
 .form-group {
   margin-bottom: 0.875rem;
 }
@@ -601,6 +606,40 @@ textarea {
   display: flex;
   gap: 0.5rem;
   margin-left: auto;
+}
+
+.hidden-lists-section {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+}
+
+.hidden-lists-title {
+  color: var(--text-secondary);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.hidden-lists {
+  display: grid;
+  gap: 0.375rem;
+}
+
+.hidden-list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.hidden-list-name {
+  font-size: 0.875rem;
+  font-weight: 500;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 /* Shopping Add */

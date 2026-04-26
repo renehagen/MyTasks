@@ -227,7 +227,9 @@ function entityToList(entity) {
     id: entity.rowKey,
     name: entity.name,
     sortOrder: entity.sortOrder || 0,
-    createdAt: entity.createdAt
+    hidden: entity.hidden === true,
+    createdAt: entity.createdAt,
+    updatedAt: entity.updatedAt
   };
 }
 
@@ -259,11 +261,42 @@ async function createList(data) {
     category: 'list',
     name: data.name,
     sortOrder: maxSort + SORT_ORDER_GAP,
-    createdAt: now
+    hidden: false,
+    createdAt: now,
+    updatedAt: now
   };
 
   await client.createEntity(entity);
   return entityToList(entity);
+}
+
+async function updateList(id, data) {
+  await ensureTable();
+  const client = getTableClient();
+
+  let existing;
+  try {
+    existing = await client.getEntity(PARTITION_KEY, id);
+  } catch (err) {
+    if (err.statusCode === 404) return null;
+    throw err;
+  }
+
+  if (existing.category !== 'list') return null;
+
+  const updated = {
+    partitionKey: PARTITION_KEY,
+    rowKey: id,
+    category: 'list',
+    name: data.name !== undefined ? data.name : existing.name,
+    sortOrder: existing.sortOrder || 0,
+    hidden: data.hidden !== undefined ? data.hidden === true : existing.hidden === true,
+    createdAt: existing.createdAt,
+    updatedAt: new Date().toISOString()
+  };
+
+  await client.updateEntity(updated, 'Replace');
+  return entityToList(updated);
 }
 
 async function deleteList(id) {
@@ -401,5 +434,5 @@ async function reorderShoppingItems(orderedIds, listId) {
 module.exports = {
   listTasks, getTask, createTask, updateTask, deleteTask, searchTasks,
   listShoppingItems, createShoppingItem, updateShoppingItem, reorderShoppingItems,
-  listLists, createList, deleteList
+  listLists, createList, updateList, deleteList
 };

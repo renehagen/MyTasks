@@ -158,13 +158,17 @@
     <div id="list-modal" class="modal-overlay" hidden>
       <div class="modal">
         <div class="modal-header">
-          <h2>New list</h2>
+          <h2 id="list-modal-title">Add list</h2>
           <button id="list-modal-close" class="btn btn-ghost">&#x2715;</button>
         </div>
         <form id="list-form">
           <div class="form-group">
-            <label for="list-name">Name</label>
+            <label for="list-name">New list</label>
             <input type="text" id="list-name" required placeholder="e.g. Packing, Party, Hardware" autocomplete="off">
+          </div>
+          <div id="hidden-lists-section" class="hidden-lists-section" hidden>
+            <div class="hidden-lists-title">Hidden lists</div>
+            <div id="hidden-lists" class="hidden-lists"></div>
           </div>
           <div class="form-actions">
             <div class="form-actions-right">
@@ -173,6 +177,24 @@
             </div>
           </div>
         </form>
+      </div>
+    </div>
+
+    <!-- List Action Modal -->
+    <div id="list-action-modal" class="modal-overlay" hidden>
+      <div class="modal">
+        <div class="modal-header">
+          <h2 id="list-action-title">List options</h2>
+          <button id="list-action-close" class="btn btn-ghost">&#x2715;</button>
+        </div>
+        <p id="list-action-message" class="modal-message"></p>
+        <div class="form-actions">
+          <button type="button" id="list-action-delete-btn" class="btn btn-danger">Delete</button>
+          <div class="form-actions-right">
+            <button type="button" id="list-action-cancel-btn" class="btn btn-ghost">Cancel</button>
+            <button type="button" id="list-action-hide-btn" class="btn btn-primary">Hide</button>
+          </div>
+        </div>
       </div>
     </div>
 

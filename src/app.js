@@ -46,10 +46,20 @@
 
   // List modal
   const listModal = document.getElementById('list-modal');
+  const listModalTitle = document.getElementById('list-modal-title');
   const listModalClose = document.getElementById('list-modal-close');
   const listForm = document.getElementById('list-form');
   const listNameField = document.getElementById('list-name');
+  const hiddenListsSection = document.getElementById('hidden-lists-section');
+  const hiddenListsEl = document.getElementById('hidden-lists');
   const listCancelBtn = document.getElementById('list-cancel-btn');
+  const listActionModal = document.getElementById('list-action-modal');
+  const listActionTitle = document.getElementById('list-action-title');
+  const listActionMessage = document.getElementById('list-action-message');
+  const listActionClose = document.getElementById('list-action-close');
+  const listActionDeleteBtn = document.getElementById('list-action-delete-btn');
+  const listActionCancelBtn = document.getElementById('list-action-cancel-btn');
+  const listActionHideBtn = document.getElementById('list-action-hide-btn');
 
   // Shopping view
   const shoppingAddInput = document.getElementById('shopping-add-input');
@@ -58,6 +68,7 @@
   const suggestionBox = document.getElementById('shopping-suggestions');
   let checkedItems = [];
   let customLists = [];
+  let selectedListForAction = null;
 
   let currentView = localStorage.getItem('mytasks_current_view') || 'shopping';
   let currentListId = localStorage.getItem('mytasks_current_list_id') || '';
@@ -152,7 +163,8 @@
     if (currentView === 'tasks') {
       await loadTasks();
     } else {
-      await Promise.all([loadLists(), loadShoppingItems()]);
+      await loadLists();
+      await loadShoppingItems();
     }
     const elapsed = Date.now() - start;
     setTimeout(hideToast, Math.max(0, 500 - elapsed));
@@ -405,18 +417,26 @@
   });
 
   // --- Tabs (dynamic) ---
+  function visibleLists() {
+    return customLists.filter(list => !list.hidden);
+  }
+
+  function hiddenLists() {
+    return customLists.filter(list => list.hidden);
+  }
+
   function renderTabs() {
     // Remove any existing custom-list tabs
     headerTabsEl.querySelectorAll('.tab-list').forEach(el => el.remove());
 
     // Insert custom list tabs before the Tasks tab
     const tasksTab = headerTabsEl.querySelector('[data-view="tasks"]');
-    for (const list of customLists) {
+    for (const list of visibleLists()) {
       const tab = document.createElement('button');
       tab.className = 'tab tab-list';
       tab.dataset.view = 'list';
       tab.dataset.listId = list.id;
-      tab.innerHTML = `<span class="tab-label"></span><button class="tab-close" title="Delete list">&#x2715;</button>`;
+      tab.innerHTML = `<span class="tab-label"></span><button class="tab-close" title="List options">&#x2715;</button>`;
       tab.querySelector('.tab-label').textContent = list.name;
       headerTabsEl.insertBefore(tab, tasksTab);
     }
@@ -454,11 +474,51 @@
 
   async function restoreActiveTab() {
     await loadLists();
-    // If stored list id no longer exists, fall back to Shopping
-    if (currentListId && !customLists.some(l => l.id === currentListId)) {
+    // If stored list id no longer exists or is hidden, fall back to Shopping
+    if (currentListId && !visibleLists().some(l => l.id === currentListId)) {
       currentListId = '';
       localStorage.setItem('mytasks_current_list_id', '');
     }
+    activateView(currentView, currentListId);
+  }
+
+  function openListActionModal(list) {
+    selectedListForAction = list;
+    listActionTitle.textContent = list.name;
+    listActionMessage.textContent = 'Hide this tab, or delete the list and all its items.';
+    listActionModal.hidden = false;
+    setTimeout(() => listActionHideBtn.focus(), 0);
+  }
+
+  function closeListActionModal() {
+    listActionModal.hidden = true;
+    selectedListForAction = null;
+  }
+
+  function fallBackFromList(listId) {
+    if (currentListId !== listId) return;
+    currentListId = '';
+    localStorage.setItem('mytasks_current_list_id', '');
+    currentView = 'shopping';
+    localStorage.setItem('mytasks_current_view', 'shopping');
+  }
+
+  async function hideList(list) {
+    await api(`/lists/${list.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ hidden: true })
+    });
+    showToast('List hidden');
+    fallBackFromList(list.id);
+    await loadLists();
+    activateView(currentView, currentListId);
+  }
+
+  async function deleteList(list) {
+    await api(`/lists/${list.id}`, { method: 'DELETE' });
+    showToast('List deleted');
+    fallBackFromList(list.id);
+    await loadLists();
     activateView(currentView, currentListId);
   }
 
@@ -471,21 +531,7 @@
       const listId = tab.dataset.listId;
       const list = customLists.find(l => l.id === listId);
       if (!list) return;
-      if (!confirm(`Delete the list "${list.name}" and all its items?`)) return;
-      try {
-        await api(`/lists/${listId}`, { method: 'DELETE' });
-        showToast('List deleted');
-        if (currentListId === listId) {
-          currentListId = '';
-          localStorage.setItem('mytasks_current_list_id', '');
-          currentView = 'shopping';
-          localStorage.setItem('mytasks_current_view', 'shopping');
-        }
-        await loadLists();
-        activateView(currentView, currentListId);
-      } catch (err) {
-        showToast(err.message);
-      }
+      openListActionModal(list);
       return;
     }
 
@@ -508,16 +554,55 @@
 
   // --- Lists ---
   async function loadLists() {
+    let loaded = false;
     try {
       customLists = await api('/lists');
+      loaded = true;
     } catch (err) {
       customLists = [];
+    }
+    if (loaded && currentListId && !visibleLists().some(l => l.id === currentListId)) {
+      fallBackFromList(currentListId);
     }
     renderTabs();
   }
 
+  function renderHiddenListChoices() {
+    const lists = hiddenLists();
+    hiddenListsEl.innerHTML = '';
+    hiddenListsSection.hidden = lists.length === 0;
+
+    for (const list of lists) {
+      const row = document.createElement('div');
+      row.className = 'hidden-list-row';
+
+      const name = document.createElement('span');
+      name.className = 'hidden-list-name';
+      name.textContent = list.name;
+
+      const showBtn = document.createElement('button');
+      showBtn.type = 'button';
+      showBtn.className = 'btn btn-ghost';
+      showBtn.textContent = 'Show';
+      showBtn.addEventListener('click', async () => {
+        showBtn.disabled = true;
+        try {
+          await showList(list);
+        } catch (err) {
+          showToast(err.message);
+          showBtn.disabled = false;
+        }
+      });
+
+      row.append(name, showBtn);
+      hiddenListsEl.appendChild(row);
+    }
+  }
+
   function openListModal() {
+    listModalTitle.textContent = 'Add list';
     listNameField.value = '';
+    renderHiddenListChoices();
     listModal.hidden = false;
     setTimeout(() => listNameField.focus(), 0);
   }
@@ -527,11 +612,60 @@
     listForm.reset();
   }
 
+  async function showList(list) {
+    await api(`/lists/${list.id}`, {
+      method: 'PUT',
+      body: JSON.stringify({ hidden: false })
+    });
+    showToast('List shown');
+    closeListModal();
+    await loadLists();
+    activateView('shopping', list.id);
+  }
+
   addListBtn.addEventListener('click', openListModal);
   listModalClose.addEventListener('click', closeListModal);
   listCancelBtn.addEventListener('click', closeListModal);
   listModal.addEventListener('click', (e) => {
     if (e.target === listModal) closeListModal();
+  });
+
+  listActionClose.addEventListener('click', closeListActionModal);
+  listActionCancelBtn.addEventListener('click', closeListActionModal);
+  listActionModal.addEventListener('click', (e) => {
+    if (e.target === listActionModal) closeListActionModal();
+  });
+
+  listActionHideBtn.addEventListener('click', async () => {
+    const list = selectedListForAction;
+    if (!list) return;
+    listActionHideBtn.disabled = true;
+    listActionDeleteBtn.disabled = true;
+    try {
+      await hideList(list);
+      closeListActionModal();
+    } catch (err) {
+      showToast(err.message);
+    } finally {
+      listActionHideBtn.disabled = false;
+      listActionDeleteBtn.disabled = false;
+    }
+  });
+
+  listActionDeleteBtn.addEventListener('click', async () => {
+    const list = selectedListForAction;
+    if (!list) return;
+    listActionHideBtn.disabled = true;
+    listActionDeleteBtn.disabled = true;
+    try {
+      await deleteList(list);
+      closeListActionModal();
+    } catch (err) {
+      showToast(err.message);
+    } finally {
+      listActionHideBtn.disabled = false;
+      listActionDeleteBtn.disabled = false;
+    }
   });
 
   listForm.addEventListener('submit', async (e) => {

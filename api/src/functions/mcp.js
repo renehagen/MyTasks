@@ -161,7 +161,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'list_lists',
-    description: 'List all custom checklists (excluding the fixed Shopping list). Each entry has { id, name, sortOrder, createdAt }.',
+    description: 'List all custom checklists (excluding the fixed Shopping list). Each entry has { id, name, sortOrder, hidden, createdAt, updatedAt }.',
     inputSchema: { type: 'object', properties: {} }
   },
   {
@@ -173,6 +173,18 @@ const TOOL_DEFINITIONS = [
         name: { type: 'string', description: 'Name of the list (required)' }
       },
       required: ['name']
+    }
+  },
+  {
+    name: 'update_list_visibility',
+    description: 'Hide or show a custom checklist tab without deleting its items.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'The list ID' },
+        hidden: { type: 'boolean', description: 'true to hide the tab, false to show it again' }
+      },
+      required: ['id', 'hidden']
     }
   },
   {
@@ -278,6 +290,19 @@ async function handleToolCall(name, args) {
         return { content: [{ type: 'text', text: 'Name is required' }], isError: true };
       }
       const list = await storage.createList({ name: args.name });
+      return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
+    }
+    case 'update_list_visibility': {
+      if (!args.id) {
+        return { content: [{ type: 'text', text: 'List ID is required' }], isError: true };
+      }
+      if (typeof args.hidden !== 'boolean') {
+        return { content: [{ type: 'text', text: 'Hidden must be a boolean' }], isError: true };
+      }
+      const list = await storage.updateList(args.id, { hidden: args.hidden });
+      if (!list) {
+        return { content: [{ type: 'text', text: 'List not found' }], isError: true };
+      }
       return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
     }
     case 'delete_list': {
