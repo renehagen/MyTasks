@@ -69,6 +69,7 @@
   let checkedItems = [];
   let customLists = [];
   let selectedListForAction = null;
+  let expandedCheckedListId = null;
 
   let currentView = localStorage.getItem('mytasks_current_view') || 'shopping';
   let currentListId = localStorage.getItem('mytasks_current_list_id') || '';
@@ -308,6 +309,7 @@
 
   refreshBtn.addEventListener('click', async () => {
     const start = Date.now();
+    expandedCheckedListId = null;
     showToast('Refreshing...', 0);
     await syncNow({ silent: true });
     if (currentView === 'tasks') {
@@ -352,6 +354,15 @@
     return d.getTime() === today.getTime();
   }
 
+  function getTaskStateTags(task, isDone) {
+    if (isDone) return [];
+    const tags = Array.isArray(task.tags) ? [...task.tags] : task.tag ? [task.tag] : [];
+    if (isOverdue(task.dueDate) && !tags.includes('overdue')) {
+      tags.unshift('overdue');
+    }
+    return tags;
+  }
+
   function renderTask(task) {
     const row = document.createElement('div');
     row.className = 'task-row';
@@ -362,17 +373,19 @@
     const titleClass = isDone ? ' done' : dueToday ? ' due-today' : '';
     const dueHtml = task.dueDate
       ? `<span class="task-row-due${isOverdue(task.dueDate) && !isDone ? ' overdue' : ''}${dueToday ? ' due-today' : ''}">${formatDate(task.dueDate)}</span>`
-      : '';
-    const tagHtml = task.tag
-      ? `<span class="task-row-tag ${task.tag}">${task.tag}</span>`
-      : '';
+      : '<span class="task-row-due"></span>';
+    const tagHtml = getTaskStateTags(task, isDone)
+      .map(tag => `<span class="task-row-tag ${tag}">${escapeHtml(tag)}</span>`)
+      .join('');
 
     row.innerHTML = `
       <span class="task-row-priority ${task.priority}"></span>
       <span class="task-row-title${titleClass}">${escapeHtml(task.title)}</span>
-      ${tagHtml}
-      ${dueHtml}
-      <span class="task-row-status ${task.status}">${task.status}</span>
+      <span class="task-row-meta">
+        <span class="task-row-tags">${tagHtml}</span>
+        ${dueHtml}
+        <span class="task-row-status ${task.status}">${task.status}</span>
+      </span>
       <button class="task-row-check${isDone ? ' checked' : ''}" title="${isDone ? 'Reopen' : 'Mark done'}">&#x2713;</button>
     `;
 
@@ -926,6 +939,8 @@
       const unchecked = items.filter(i => !i.checked);
       const checked = items.filter(i => i.checked);
       checkedItems = checked;
+      const listKey = currentListId || 'shopping';
+      const checkedExpanded = expandedCheckedListId === listKey;
 
       for (const item of unchecked) {
         shoppingListEl.appendChild(renderShoppingItem(item));
@@ -934,28 +949,42 @@
       if (checked.length > 0) {
         const divider = document.createElement('div');
         divider.className = 'shopping-divider';
-        divider.innerHTML = `
-          <span>${checked.length} checked</span>
-          <button class="clear-checked-btn">Clear all</button>
-        `;
+        divider.innerHTML = checkedExpanded
+          ? `
+            <span>${checked.length} checked</span>
+            <button class="clear-checked-btn">Clear all</button>
+          `
+          : `
+            <button class="show-checked-btn">${checked.length} checked</button>
+          `;
         shoppingListEl.appendChild(divider);
 
-        divider.querySelector('.clear-checked-btn').addEventListener('click', async () => {
-          if (!confirm('Remove all checked items?')) return;
-          try {
-            await Promise.all(checked.map(item =>
-              api(`/shopping/${item.id}`, { method: 'DELETE' })
-            ));
-            showToast('Checked items cleared');
-            loadShoppingItems();
-          } catch (err) {
-            showToast(err.message);
-          }
-        });
+        if (checkedExpanded) {
+          divider.querySelector('.clear-checked-btn').addEventListener('click', async () => {
+            if (!confirm('Remove all checked items?')) return;
+            try {
+              await Promise.all(checked.map(item =>
+                api(`/shopping/${item.id}`, { method: 'DELETE' })
+              ));
+              expandedCheckedListId = null;
+              showToast('Checked items cleared');
+              loadShoppingItems();
+            } catch (err) {
+              showToast(err.message);
+            }
+          });
 
-        for (const item of checked) {
-          shoppingListEl.appendChild(renderShoppingItem(item));
+          for (const item of checked) {
+            shoppingListEl.appendChild(renderShoppingItem(item));
+          }
+        } else {
+          divider.querySelector('.show-checked-btn').addEventListener('click', () => {
+            expandedCheckedListId = listKey;
+            loadShoppingItems();
+          });
         }
+      } else if (expandedCheckedListId === listKey) {
+        expandedCheckedListId = null;
       }
 
       initDragHandlers();

@@ -78,12 +78,20 @@
     const normalized = normalizeTask(task);
     const today = new Date().toISOString().slice(0, 10);
     const active = normalized.status !== 'done' && normalized.status !== 'cancelled';
+    const overdue = active && normalized.dueDate && normalized.dueDate < today;
+    const pending = active && normalized.startDate && normalized.startDate <= today;
+    const waiting = active && normalized.waiting;
 
-    if (active && normalized.waiting) {
+    normalized.tags = [];
+    if (overdue) normalized.tags.push('overdue');
+    if (!overdue && pending) normalized.tags.push('pending');
+    if (waiting) normalized.tags.push('waiting');
+
+    if (waiting) {
       normalized.tag = 'waiting';
-    } else if (active && normalized.dueDate && normalized.dueDate < today) {
+    } else if (overdue) {
       normalized.tag = 'overdue';
-    } else if (active && normalized.startDate && normalized.startDate <= today) {
+    } else if (pending) {
       normalized.tag = 'pending';
     } else {
       normalized.tag = null;

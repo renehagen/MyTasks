@@ -323,7 +323,8 @@ textarea {
 
 /* Task Row */
 .task-row {
-  display: flex;
+  display: grid;
+  grid-template-columns: 3px minmax(0, 1fr) auto 1.75rem;
   align-items: center;
   gap: 0.5rem;
   padding: 0.5rem 0.75rem;
@@ -368,6 +369,22 @@ textarea {
 
 .task-row-title.due-today {
   font-weight: 600;
+}
+
+.task-row-meta {
+  display: grid;
+  grid-template-columns: minmax(6rem, max-content) 4rem minmax(4.75rem, max-content);
+  align-items: center;
+  justify-self: end;
+  column-gap: 0.5rem;
+}
+
+.task-row-tags {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.25rem;
+  min-width: 6rem;
+  flex-wrap: wrap;
 }
 
 .task-row-due.due-today {
@@ -422,7 +439,9 @@ textarea {
 .task-row-due {
   font-size: 0.6875rem;
   color: var(--text-secondary);
-  flex-shrink: 0;
+  width: 4rem;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
 }
 
 .task-row-due.overdue {
@@ -438,7 +457,8 @@ textarea {
   text-transform: uppercase;
   letter-spacing: 0.03em;
   color: #fff;
-  flex-shrink: 0;
+  min-width: 4.75rem;
+  text-align: center;
 }
 
 .task-row-status.backlog { background: var(--status-backlog); }
@@ -474,6 +494,30 @@ textarea {
   border-color: var(--status-done);
   background: var(--status-done);
   color: #fff;
+}
+
+@media (max-width: 560px) {
+  .task-row {
+    grid-template-columns: 3px minmax(0, 1fr) 1.75rem;
+    row-gap: 0.25rem;
+  }
+
+  .task-row-priority {
+    grid-row: 1 / 3;
+    align-self: stretch;
+    height: auto;
+  }
+
+  .task-row-meta {
+    grid-column: 2;
+    grid-row: 2;
+    max-width: 100%;
+  }
+
+  .task-row-check {
+    grid-column: 3;
+    grid-row: 1 / 3;
+  }
 }
 
 /* FAB */
@@ -820,6 +864,11 @@ textarea {
   border: none;
   cursor: pointer;
   padding: 0.125rem 0.25rem;
+}
+
+.shopping-divider .show-checked-btn {
+  color: var(--text-secondary);
+  margin: 0 auto;
 }
 
 .shopping-item.dragging {
