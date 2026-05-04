@@ -31,6 +31,93 @@ async function ensureTable() {
   tableReady = true;
 }
 
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function isDeleted(entity) {
+  return !!entity.deletedAt;
+}
+
+function changedSince(entity, since) {
+  if (!since) return true;
+  const changedAt = entity.updatedAt || entity.createdAt || '';
+  return changedAt > since;
+}
+
+function isTaskEntity(entity) {
+  return entity.category !== 'shopping' && entity.category !== 'list';
+}
+
+function sortTasks(tasks) {
+  const priorityOrder = { 'high': 0, 'medium': 1, 'low': 2 };
+
+  function sortGroup(task) {
+    if (task.deletedAt) return 99;
+    if (task.tag === 'overdue') return 0;
+    if (task.tag === 'pending') return 1;
+    if (task.tag === 'waiting') return 2;
+    const active = task.status !== 'done' && task.status !== 'cancelled' && task.status !== 'backlog';
+    if (active && task.dueDate) return 3;
+    if (task.status === 'in-progress') return 4;
+    if (task.status === 'todo') return 5;
+    if (task.status === 'done' || task.status === 'cancelled') return 6;
+    if (task.status === 'backlog') return 7;
+    return 8;
+  }
+
+  tasks.sort((a, b) => {
+    const ga = sortGroup(a);
+    const gb = sortGroup(b);
+    if (ga !== gb) return ga - gb;
+
+    const aHasDue = !!a.dueDate;
+    const bHasDue = !!b.dueDate;
+    if (aHasDue !== bHasDue) return aHasDue ? -1 : 1;
+
+    if (aHasDue && bHasDue) {
+      const cmp = a.dueDate.localeCompare(b.dueDate);
+      if (cmp !== 0) return cmp;
+    }
+
+    const pa = priorityOrder[a.priority] ?? 9;
+    const pb = priorityOrder[b.priority] ?? 9;
+    if (pa !== pb) return pa - pb;
+
+    return 0;
+  });
+  return tasks;
+}
+
+async function getEntityOrNull(id) {
+  const client = getTableClient();
+  try {
+    return await client.getEntity(PARTITION_KEY, id);
+  } catch (err) {
+    if (err.statusCode === 404) return null;
+    throw err;
+  }
+}
+
+async function markDeleted(id, expectedCategory) {
+  await ensureTable();
+  const client = getTableClient();
+  const existing = await getEntityOrNull(id);
+  if (!existing || isDeleted(existing)) return false;
+
+  if (expectedCategory === 'task' && !isTaskEntity(existing)) return false;
+  if (expectedCategory && expectedCategory !== 'task' && existing.category !== expectedCategory) return false;
+
+  const now = nowIso();
+  await client.updateEntity({
+    partitionKey: PARTITION_KEY,
+    rowKey: id,
+    updatedAt: now,
+    deletedAt: now
+  }, 'Merge');
+  return true;
+}
+
 function entityToTask(entity) {
   const today = new Date().toISOString().slice(0, 10);
   const task = {
@@ -43,7 +130,8 @@ function entityToTask(entity) {
     dueDate: entity.dueDate || null,
     waiting: entity.waiting === true,
     createdAt: entity.createdAt,
-    updatedAt: entity.updatedAt
+    updatedAt: entity.updatedAt,
+    deletedAt: entity.deletedAt || null
   };
 
   const active = task.status !== 'done' && task.status !== 'cancelled';
@@ -77,73 +165,28 @@ async function listTasks(filters = {}) {
 
   const tasks = [];
   for await (const entity of entities) {
-    if (entity.category === 'shopping' || entity.category === 'list') continue;
+    if (!isTaskEntity(entity) || isDeleted(entity)) continue;
     tasks.push(entityToTask(entity));
   }
 
-  const priorityOrder = { 'high': 0, 'medium': 1, 'low': 2 };
-  const today = new Date().toISOString().slice(0, 10);
-
-  function sortGroup(task) {
-    if (task.tag === 'overdue') return 0;
-    if (task.tag === 'pending') return 1;
-    if (task.tag === 'waiting') return 2;
-    const active = task.status !== 'done' && task.status !== 'cancelled' && task.status !== 'backlog';
-    if (active && task.dueDate) return 3;
-    if (task.status === 'in-progress') return 4;
-    if (task.status === 'todo') return 5;
-    if (task.status === 'done' || task.status === 'cancelled') return 6;
-    if (task.status === 'backlog') return 7;
-    return 8;
-  }
-
-  tasks.sort((a, b) => {
-    // 1. Sort group: overdue > in-progress > todo > done/cancelled > backlog
-    const ga = sortGroup(a);
-    const gb = sortGroup(b);
-    if (ga !== gb) return ga - gb;
-
-    // 2. Tasks with due date before tasks without
-    const aHasDue = !!a.dueDate;
-    const bHasDue = !!b.dueDate;
-    if (aHasDue !== bHasDue) return aHasDue ? -1 : 1;
-
-    // 3. Due date ascending (earliest first)
-    if (aHasDue && bHasDue) {
-      const cmp = a.dueDate.localeCompare(b.dueDate);
-      if (cmp !== 0) return cmp;
-    }
-
-    // 4. Priority: high > medium > low
-    const pa = priorityOrder[a.priority] ?? 9;
-    const pb = priorityOrder[b.priority] ?? 9;
-    if (pa !== pb) return pa - pb;
-
-    return 0;
-  });
-  return tasks;
+  return sortTasks(tasks);
 }
 
 async function getTask(id) {
   await ensureTable();
-  const client = getTableClient();
-  try {
-    const entity = await client.getEntity(PARTITION_KEY, id);
-    return entityToTask(entity);
-  } catch (err) {
-    if (err.statusCode === 404) return null;
-    throw err;
-  }
+  const entity = await getEntityOrNull(id);
+  if (!entity || !isTaskEntity(entity) || isDeleted(entity)) return null;
+  return entityToTask(entity);
 }
 
 async function createTask(data) {
   await ensureTable();
   const client = getTableClient();
 
-  const now = new Date().toISOString();
+  const now = nowIso();
   const entity = {
     partitionKey: PARTITION_KEY,
-    rowKey: uuidv4(),
+    rowKey: data.id || uuidv4(),
     title: data.title,
     status: data.status || 'todo',
     priority: data.priority || 'medium',
@@ -163,8 +206,8 @@ async function updateTask(id, data) {
   await ensureTable();
   const client = getTableClient();
 
-  const existing = await client.getEntity(PARTITION_KEY, id);
-  if (!existing) return null;
+  const existing = await getEntityOrNull(id);
+  if (!existing || !isTaskEntity(existing) || isDeleted(existing)) return null;
 
   const updated = {
     partitionKey: PARTITION_KEY,
@@ -177,7 +220,7 @@ async function updateTask(id, data) {
     dueDate: data.dueDate !== undefined ? data.dueDate : existing.dueDate,
     waiting: data.waiting !== undefined ? data.waiting : existing.waiting,
     createdAt: existing.createdAt,
-    updatedAt: new Date().toISOString()
+    updatedAt: nowIso()
   };
 
   await client.updateEntity(updated, 'Replace');
@@ -185,15 +228,7 @@ async function updateTask(id, data) {
 }
 
 async function deleteTask(id) {
-  await ensureTable();
-  const client = getTableClient();
-  try {
-    await client.deleteEntity(PARTITION_KEY, id);
-    return true;
-  } catch (err) {
-    if (err.statusCode === 404) return false;
-    throw err;
-  }
+  return markDeleted(id, 'task');
 }
 
 async function searchTasks(query) {
@@ -218,7 +253,8 @@ function entityToShoppingItem(entity) {
     checked: entity.checked === true,
     sortOrder: entity.sortOrder || 0,
     createdAt: entity.createdAt,
-    updatedAt: entity.updatedAt
+    updatedAt: entity.updatedAt,
+    deletedAt: entity.deletedAt || null
   };
 }
 
@@ -229,7 +265,8 @@ function entityToList(entity) {
     sortOrder: entity.sortOrder || 0,
     hidden: entity.hidden === true,
     createdAt: entity.createdAt,
-    updatedAt: entity.updatedAt
+    updatedAt: entity.updatedAt,
+    deletedAt: entity.deletedAt || null
   };
 }
 
@@ -241,6 +278,7 @@ async function listLists() {
 
   const lists = [];
   for await (const entity of entities) {
+    if (isDeleted(entity)) continue;
     lists.push(entityToList(entity));
   }
   lists.sort((a, b) => a.sortOrder - b.sortOrder);
@@ -250,17 +288,17 @@ async function listLists() {
 async function createList(data) {
   await ensureTable();
   const client = getTableClient();
-  const now = new Date().toISOString();
+  const now = nowIso();
 
   const existing = await listLists();
   const maxSort = existing.reduce((max, l) => Math.max(max, l.sortOrder), 0);
 
   const entity = {
     partitionKey: PARTITION_KEY,
-    rowKey: uuidv4(),
+    rowKey: data.id || uuidv4(),
     category: 'list',
     name: data.name,
-    sortOrder: maxSort + SORT_ORDER_GAP,
+    sortOrder: data.sortOrder !== undefined ? data.sortOrder : maxSort + SORT_ORDER_GAP,
     hidden: false,
     createdAt: now,
     updatedAt: now
@@ -276,13 +314,13 @@ async function updateList(id, data) {
 
   let existing;
   try {
-    existing = await client.getEntity(PARTITION_KEY, id);
+    existing = await getEntityOrNull(id);
   } catch (err) {
     if (err.statusCode === 404) return null;
     throw err;
   }
 
-  if (existing.category !== 'list') return null;
+  if (!existing || existing.category !== 'list' || isDeleted(existing)) return null;
 
   const updated = {
     partitionKey: PARTITION_KEY,
@@ -292,7 +330,7 @@ async function updateList(id, data) {
     sortOrder: existing.sortOrder || 0,
     hidden: data.hidden !== undefined ? data.hidden === true : existing.hidden === true,
     createdAt: existing.createdAt,
-    updatedAt: new Date().toISOString()
+    updatedAt: nowIso()
   };
 
   await client.updateEntity(updated, 'Replace');
@@ -301,24 +339,13 @@ async function updateList(id, data) {
 
 async function deleteList(id) {
   await ensureTable();
-  const client = getTableClient();
 
   const items = await listShoppingItems(id);
   for (const item of items) {
-    try {
-      await client.deleteEntity(PARTITION_KEY, item.id);
-    } catch (err) {
-      if (err.statusCode !== 404) throw err;
-    }
+    await markDeleted(item.id, 'shopping');
   }
 
-  try {
-    await client.deleteEntity(PARTITION_KEY, id);
-    return true;
-  } catch (err) {
-    if (err.statusCode === 404) return false;
-    throw err;
-  }
+  return markDeleted(id, 'list');
 }
 
 function normalizeListId(listId) {
@@ -334,6 +361,7 @@ async function listShoppingItems(listId) {
   const normalized = normalizeListId(listId);
   const items = [];
   for await (const entity of entities) {
+    if (isDeleted(entity)) continue;
     const itemListId = entity.listId || '';
     if (itemListId !== normalized) continue;
     items.push(entityToShoppingItem(entity));
@@ -350,7 +378,7 @@ async function listShoppingItems(listId) {
 async function createShoppingItem(data) {
   await ensureTable();
   const client = getTableClient();
-  const now = new Date().toISOString();
+  const now = nowIso();
 
   const normalized = normalizeListId(data.listId);
   const existing = await listShoppingItems(normalized);
@@ -358,12 +386,12 @@ async function createShoppingItem(data) {
 
   const entity = {
     partitionKey: PARTITION_KEY,
-    rowKey: uuidv4(),
+    rowKey: data.id || uuidv4(),
     category: 'shopping',
     listId: normalized,
     title: data.title,
     checked: false,
-    sortOrder: minSort - SORT_ORDER_GAP,
+    sortOrder: data.sortOrder !== undefined ? data.sortOrder : minSort - SORT_ORDER_GAP,
     status: '',
     priority: '',
     notes: '',
@@ -383,11 +411,13 @@ async function updateShoppingItem(id, data) {
 
   let existing;
   try {
-    existing = await client.getEntity(PARTITION_KEY, id);
+    existing = await getEntityOrNull(id);
   } catch (err) {
     if (err.statusCode === 404) return null;
     throw err;
   }
+
+  if (!existing || existing.category !== 'shopping' || isDeleted(existing)) return null;
 
   const updated = {
     partitionKey: PARTITION_KEY,
@@ -402,17 +432,21 @@ async function updateShoppingItem(id, data) {
     notes: existing.notes || '',
     dueDate: existing.dueDate || '',
     createdAt: existing.createdAt,
-    updatedAt: new Date().toISOString()
+    updatedAt: nowIso()
   };
 
   await client.updateEntity(updated, 'Replace');
   return entityToShoppingItem(updated);
 }
 
+async function deleteShoppingItem(id) {
+  return markDeleted(id, 'shopping');
+}
+
 async function reorderShoppingItems(orderedIds, listId) {
   await ensureTable();
   const client = getTableClient();
-  const now = new Date().toISOString();
+  const now = nowIso();
 
   const actions = [];
   for (let i = 0; i < orderedIds.length; i++) {
@@ -431,8 +465,133 @@ async function reorderShoppingItems(orderedIds, listId) {
   return listShoppingItems(listId);
 }
 
+async function upsertTaskFromSync(data) {
+  await ensureTable();
+  const client = getTableClient();
+  const now = nowIso();
+  const id = data.id || uuidv4();
+  const existing = await getEntityOrNull(id);
+
+  if (existing && !isTaskEntity(existing)) {
+    throw new Error(`Cannot sync task ${id}: ID belongs to another record type`);
+  }
+
+  const entity = {
+    partitionKey: PARTITION_KEY,
+    rowKey: id,
+    title: data.title !== undefined ? data.title : existing?.title || '',
+    status: data.status !== undefined ? data.status : existing?.status || 'todo',
+    priority: data.priority !== undefined ? data.priority : existing?.priority || 'medium',
+    notes: data.notes !== undefined ? data.notes : existing?.notes || '',
+    startDate: data.startDate !== undefined ? data.startDate || '' : existing?.startDate || '',
+    dueDate: data.dueDate !== undefined ? data.dueDate || '' : existing?.dueDate || '',
+    waiting: data.waiting !== undefined ? data.waiting === true : existing?.waiting === true,
+    createdAt: existing?.createdAt || data.createdAt || now,
+    updatedAt: now,
+    deletedAt: ''
+  };
+
+  await client.upsertEntity(entity, 'Replace');
+  return entityToTask(entity);
+}
+
+async function upsertListFromSync(data) {
+  await ensureTable();
+  const client = getTableClient();
+  const now = nowIso();
+  const id = data.id || uuidv4();
+  const existing = await getEntityOrNull(id);
+
+  if (existing && existing.category !== 'list') {
+    throw new Error(`Cannot sync list ${id}: ID belongs to another record type`);
+  }
+
+  const entity = {
+    partitionKey: PARTITION_KEY,
+    rowKey: id,
+    category: 'list',
+    name: data.name !== undefined ? data.name : existing?.name || '',
+    sortOrder: data.sortOrder !== undefined ? data.sortOrder : existing?.sortOrder || 0,
+    hidden: data.hidden !== undefined ? data.hidden === true : existing?.hidden === true,
+    createdAt: existing?.createdAt || data.createdAt || now,
+    updatedAt: now,
+    deletedAt: ''
+  };
+
+  await client.upsertEntity(entity, 'Replace');
+  return entityToList(entity);
+}
+
+async function upsertShoppingItemFromSync(data) {
+  await ensureTable();
+  const client = getTableClient();
+  const now = nowIso();
+  const id = data.id || uuidv4();
+  const existing = await getEntityOrNull(id);
+
+  if (existing && existing.category !== 'shopping') {
+    throw new Error(`Cannot sync shopping item ${id}: ID belongs to another record type`);
+  }
+
+  const entity = {
+    partitionKey: PARTITION_KEY,
+    rowKey: id,
+    category: 'shopping',
+    listId: normalizeListId(data.listId !== undefined ? data.listId : existing?.listId || ''),
+    title: data.title !== undefined ? data.title : existing?.title || '',
+    checked: data.checked !== undefined ? data.checked === true : existing?.checked === true,
+    sortOrder: data.sortOrder !== undefined ? data.sortOrder : existing?.sortOrder || 0,
+    status: existing?.status || '',
+    priority: existing?.priority || '',
+    notes: existing?.notes || '',
+    startDate: existing?.startDate || '',
+    dueDate: existing?.dueDate || '',
+    createdAt: existing?.createdAt || data.createdAt || now,
+    updatedAt: now,
+    deletedAt: ''
+  };
+
+  await client.upsertEntity(entity, 'Replace');
+  return entityToShoppingItem(entity);
+}
+
+async function listChanges(since) {
+  await ensureTable();
+  const client = getTableClient();
+  const filter = `PartitionKey eq '${PARTITION_KEY}'`;
+  const entities = client.listEntities({ queryOptions: { filter } });
+
+  const changes = {
+    tasks: [],
+    lists: [],
+    shoppingItems: []
+  };
+
+  for await (const entity of entities) {
+    if (!changedSince(entity, since)) continue;
+
+    if (entity.category === 'list') {
+      changes.lists.push(entityToList(entity));
+    } else if (entity.category === 'shopping') {
+      changes.shoppingItems.push(entityToShoppingItem(entity));
+    } else {
+      changes.tasks.push(entityToTask(entity));
+    }
+  }
+
+  sortTasks(changes.tasks);
+  changes.lists.sort((a, b) => a.sortOrder - b.sortOrder);
+  changes.shoppingItems.sort((a, b) => {
+    if (a.checked !== b.checked) return a.checked ? 1 : -1;
+    return a.sortOrder - b.sortOrder;
+  });
+
+  return changes;
+}
+
 module.exports = {
   listTasks, getTask, createTask, updateTask, deleteTask, searchTasks,
-  listShoppingItems, createShoppingItem, updateShoppingItem, reorderShoppingItems,
-  listLists, createList, updateList, deleteList
+  listShoppingItems, createShoppingItem, updateShoppingItem, deleteShoppingItem, reorderShoppingItems,
+  listLists, createList, updateList, deleteList,
+  upsertTaskFromSync, upsertListFromSync, upsertShoppingItemFromSync, listChanges
 };

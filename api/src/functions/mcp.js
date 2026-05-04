@@ -330,7 +330,7 @@ async function handleToolCall(name, args) {
       if (!args.id) {
         return { content: [{ type: 'text', text: 'Item ID is required' }], isError: true };
       }
-      const didDelete = await storage.deleteTask(args.id);
+      const didDelete = await storage.deleteShoppingItem(args.id);
       if (!didDelete) {
         return { content: [{ type: 'text', text: 'Item not found' }], isError: true };
       }

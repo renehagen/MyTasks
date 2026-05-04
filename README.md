@@ -3,6 +3,7 @@
 A simple task tracker with a remote MCP endpoint, deployed as an Azure Static Web App.
 
 - CRUD API for tasks (title, status, priority, notes, due date)
+- Local-first offline mutations with reconnect sync
 - Remote MCP server (Streamable HTTP) for Claude.ai integration
 - Clean, mobile-first web UI
 - API key authentication
@@ -141,6 +142,12 @@ All endpoints require an `x-api-key` header (or `Authorization: Bearer <key>`).
 | `POST` | `/api/tasks` | Create a task |
 | `PUT` | `/api/tasks/{id}` | Update a task |
 | `DELETE` | `/api/tasks/{id}` | Delete a task |
+
+### Sync
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/sync` | Push queued local task/list/item mutations and pull cloud changes since the last sync |
 
 ### Task Object
 

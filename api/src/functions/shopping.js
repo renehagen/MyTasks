@@ -112,7 +112,7 @@ app.http('deleteShopping', {
 
     try {
       const id = request.params.id;
-      const deleted = await storage.deleteTask(id);
+      const deleted = await storage.deleteShoppingItem(id);
       if (!deleted) {
         return { status: 404, jsonBody: { error: 'Item not found' } };
       }

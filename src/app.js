@@ -1,4 +1,4 @@
-(function () {
+(async function () {
   'use strict';
 
   const API_BASE = '/api';
@@ -73,8 +73,13 @@
   let currentView = localStorage.getItem('mytasks_current_view') || 'shopping';
   let currentListId = localStorage.getItem('mytasks_current_list_id') || '';
 
-  // --- API Client ---
-  async function api(path, options = {}) {
+  await window.MyTasksLocal.init();
+
+  let syncTimer = null;
+  let syncInFlight = false;
+
+  // --- API Clients ---
+  async function cloudApi(path, options = {}) {
     const res = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers: {
@@ -90,6 +95,86 @@
       throw error;
     }
     return res.json();
+  }
+
+  function parseBody(options) {
+    if (!options.body) return {};
+    if (typeof options.body === 'string') return JSON.parse(options.body);
+    return options.body;
+  }
+
+  function notFound(message) {
+    const error = new Error(message);
+    error.status = 404;
+    return error;
+  }
+
+  async function api(path, options = {}) {
+    const method = (options.method || 'GET').toUpperCase();
+    const url = new URL(path, window.location.origin);
+    const body = parseBody(options);
+    const route = url.pathname;
+    let result;
+
+    if (route === '/tasks' && method === 'GET') {
+      result = await window.MyTasksLocal.listTasks({
+        search: url.searchParams.get('search') || '',
+        status: url.searchParams.get('status') || '',
+        priority: url.searchParams.get('priority') || ''
+      });
+    } else if (route === '/tasks' && method === 'POST') {
+      result = await window.MyTasksLocal.saveTask(body);
+    } else if (route.startsWith('/tasks/')) {
+      const id = decodeURIComponent(route.slice('/tasks/'.length));
+      if (method === 'GET') {
+        result = await window.MyTasksLocal.getTask(id);
+        if (!result) throw notFound('Task not found');
+      } else if (method === 'PUT') {
+        result = await window.MyTasksLocal.saveTask(body, id);
+        if (!result) throw notFound('Task not found');
+      } else if (method === 'DELETE') {
+        const deleted = await window.MyTasksLocal.deleteTask(id);
+        if (!deleted) throw notFound('Task not found');
+        result = { message: 'Task deleted' };
+      }
+    } else if (route === '/lists' && method === 'GET') {
+      result = await window.MyTasksLocal.listLists();
+    } else if (route === '/lists' && method === 'POST') {
+      result = await window.MyTasksLocal.saveList(body);
+    } else if (route.startsWith('/lists/')) {
+      const id = decodeURIComponent(route.slice('/lists/'.length));
+      if (method === 'PUT') {
+        result = await window.MyTasksLocal.saveList(body, id);
+        if (!result) throw notFound('List not found');
+      } else if (method === 'DELETE') {
+        const deleted = await window.MyTasksLocal.deleteList(id);
+        if (!deleted) throw notFound('List not found');
+        result = { message: 'List deleted' };
+      }
+    } else if (route === '/shopping' && method === 'GET') {
+      result = await window.MyTasksLocal.listShoppingItems(url.searchParams.get('listId') || '');
+    } else if (route === '/shopping' && method === 'POST') {
+      result = await window.MyTasksLocal.saveShoppingItem(body);
+    } else if (route === '/shopping/reorder' && method === 'PUT') {
+      result = await window.MyTasksLocal.reorderShoppingItems(body.orderedIds || [], body.listId || '');
+    } else if (route.startsWith('/shopping/')) {
+      const id = decodeURIComponent(route.slice('/shopping/'.length));
+      if (method === 'PUT') {
+        result = await window.MyTasksLocal.saveShoppingItem(body, id);
+        if (!result) throw notFound('Item not found');
+      } else if (method === 'DELETE') {
+        const deleted = await window.MyTasksLocal.deleteShoppingItem(id);
+        if (!deleted) throw notFound('Item not found');
+        result = { message: 'Item deleted' };
+      }
+    }
+
+    if (result === undefined) {
+      throw new Error(`Unsupported local API route: ${method} ${route}`);
+    }
+
+    if (method !== 'GET') scheduleSync();
+    return result;
   }
 
   // --- Toast ---
@@ -110,15 +195,75 @@
     setTimeout(() => { toastEl.hidden = true; }, 200);
   }
 
+  async function reloadCurrentView() {
+    if (mainApp.hidden) return;
+    if (currentView === 'tasks') {
+      await loadTasks();
+    } else {
+      await loadLists();
+      await loadShoppingItems();
+    }
+  }
+
+  async function syncNow(options = {}) {
+    const silent = options.silent === true;
+    if (!apiKey || syncInFlight) return false;
+    if (navigator.onLine === false) {
+      if (!silent) showToast('Offline - changes are queued');
+      return false;
+    }
+
+    syncInFlight = true;
+    const operations = await window.MyTasksLocal.getPendingOperations();
+    const sentOperationIds = operations.map(op => op.id);
+
+    try {
+      const result = await cloudApi('/sync', {
+        method: 'POST',
+        body: JSON.stringify({
+          lastPulledAt: await window.MyTasksLocal.getMeta('lastPulledAt'),
+          operations
+        })
+      });
+
+      await window.MyTasksLocal.applySyncResult(result, sentOperationIds);
+      if (!silent && operations.length > 0) showToast('Changes synced');
+      return true;
+    } catch (err) {
+      if (err.status === 401) {
+        apiKey = '';
+        localStorage.removeItem('mytasks_api_key');
+        mainApp.hidden = true;
+        authGate.hidden = false;
+        authError.textContent = 'Invalid API key';
+        authError.hidden = false;
+      } else if (!silent && operations.length > 0) {
+        showToast('Offline - changes are queued');
+      }
+      return false;
+    } finally {
+      syncInFlight = false;
+    }
+  }
+
+  function scheduleSync() {
+    clearTimeout(syncTimer);
+    syncTimer = setTimeout(async () => {
+      const synced = await syncNow({ silent: true });
+      if (synced) await reloadCurrentView();
+    }, 400);
+  }
+
   // --- Auth ---
   async function tryAuth(key, isAutoLogin) {
     apiKey = key;
     try {
-      await api('/tasks');
+      await cloudApi('/tasks');
       localStorage.setItem('mytasks_api_key', key);
       authGate.hidden = true;
       mainApp.hidden = false;
-      restoreActiveTab();
+      await syncNow({ silent: true });
+      await restoreActiveTab();
     } catch (e) {
       if (e.status === 401) {
         // Definitive auth failure - clear saved key
@@ -126,10 +271,14 @@
         localStorage.removeItem('mytasks_api_key');
         throw new Error('Invalid API key');
       }
-      // Server/network error - keep key for retry if auto-login
-      if (isAutoLogin) {
-        apiKey = key;
-        throw new Error('Server unavailable');
+      // Server/network error - saved keys can still open cached local data.
+      if (isAutoLogin && await window.MyTasksLocal.hasLocalData()) {
+        localStorage.setItem('mytasks_api_key', key);
+        authGate.hidden = true;
+        mainApp.hidden = false;
+        showToast('Offline mode');
+        await restoreActiveTab();
+        return;
       }
       apiKey = '';
       throw new Error(e.message || 'Connection failed');
@@ -160,6 +309,7 @@
   refreshBtn.addEventListener('click', async () => {
     const start = Date.now();
     showToast('Refreshing...', 0);
+    await syncNow({ silent: true });
     if (currentView === 'tasks') {
       await loadTasks();
     } else {
@@ -1020,6 +1170,15 @@
 
     dragState = null;
   }
+
+  window.addEventListener('online', async () => {
+    const synced = await syncNow({ silent: true });
+    if (synced) await reloadCurrentView();
+  });
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') scheduleSync();
+  });
 
   // --- Init ---
   // Allow passing API key via URL query parameter: ?key=xxx
