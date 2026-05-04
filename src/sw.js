@@ -1,10 +1,11 @@
-const CACHE_NAME = 'mytasks-shell-v2';
+const APP_VERSION = '20260504-2';
+const CACHE_NAME = `mytasks-shell-${APP_VERSION}`;
 const APP_SHELL = [
   '/',
   '/index.html',
-  '/styles.css',
-  '/local-store.js',
-  '/app.js',
+  `/styles.css?v=${APP_VERSION}`,
+  `/local-store.js?v=${APP_VERSION}`,
+  `/app.js?v=${APP_VERSION}`,
   '/manifest.json',
   '/icons/icon-192.svg',
   '/icons/icon-512.svg',
@@ -48,11 +49,12 @@ self.addEventListener('fetch', (event) => {
   }
 
   event.respondWith(
-    caches.match(request)
-      .then(cached => cached || fetch(request).then(response => {
+    fetch(request)
+      .then(response => {
         const copy = response.clone();
         caches.open(CACHE_NAME).then(cache => cache.put(request, copy));
         return response;
-      }))
+      })
+      .catch(() => caches.match(request))
   );
 });
