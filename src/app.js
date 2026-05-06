@@ -847,6 +847,77 @@
   });
 
   // --- Shopping List ---
+  function addIntentionalCheckToggle(button, onToggle) {
+    const minPressMs = 140;
+    const maxMovePx = 8;
+    let pointerIntent = null;
+    let suppressSyntheticClick = false;
+
+    async function runToggle() {
+      if (button.disabled) return;
+      button.disabled = true;
+      try {
+        await onToggle();
+      } finally {
+        button.disabled = false;
+      }
+    }
+
+    function clearPointerIntent() {
+      pointerIntent = null;
+      button.classList.remove('pressing');
+    }
+
+    button.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' || e.button !== 0) return;
+      pointerIntent = {
+        id: e.pointerId,
+        x: e.clientX,
+        y: e.clientY,
+        startedAt: Date.now(),
+        cancelled: false
+      };
+      button.classList.add('pressing');
+      if (button.setPointerCapture) button.setPointerCapture(e.pointerId);
+    });
+
+    button.addEventListener('pointermove', (e) => {
+      if (!pointerIntent || e.pointerId !== pointerIntent.id) return;
+      const moved = Math.hypot(e.clientX - pointerIntent.x, e.clientY - pointerIntent.y);
+      if (moved > maxMovePx) {
+        pointerIntent.cancelled = true;
+        button.classList.remove('pressing');
+      }
+    });
+
+    button.addEventListener('pointerup', (e) => {
+      if (!pointerIntent || e.pointerId !== pointerIntent.id) return;
+      const intent = pointerIntent;
+      const elapsed = Date.now() - intent.startedAt;
+      clearPointerIntent();
+
+      suppressSyntheticClick = true;
+      setTimeout(() => { suppressSyntheticClick = false; }, 350);
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (!intent.cancelled && elapsed >= minPressMs) {
+        runToggle();
+      }
+    });
+
+    button.addEventListener('pointercancel', clearPointerIntent);
+
+    button.addEventListener('click', (e) => {
+      if (suppressSyntheticClick) {
+        e.preventDefault();
+        e.stopPropagation();
+        return;
+      }
+      runToggle();
+    });
+  }
+
   function renderShoppingItem(item) {
     const row = document.createElement('div');
     row.className = 'shopping-item' + (item.checked ? ' checked-item' : '');
@@ -861,7 +932,7 @@
       <button class="shopping-item-delete" title="Remove">&#x2715;</button>
     `;
 
-    row.querySelector('.shopping-item-check').addEventListener('click', async () => {
+    addIntentionalCheckToggle(row.querySelector('.shopping-item-check'), async () => {
       try {
         await api(`/shopping/${item.id}`, {
           method: 'PUT',

@@ -784,11 +784,18 @@ textarea {
   color: transparent;
   font-size: 0.75rem;
   padding: 0;
-  transition: border-color 0.15s, background 0.15s;
+  touch-action: manipulation;
+  transition: border-color 0.15s, background 0.15s, transform 0.15s;
 }
 
 .shopping-item-check:hover {
   border-color: var(--primary);
+}
+
+.shopping-item-check.pressing {
+  border-color: var(--primary);
+  background: rgba(37, 99, 235, 0.08);
+  transform: scale(0.94);
 }
 
 .shopping-item-check.checked {
