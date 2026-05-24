@@ -1,4 +1,4 @@
-const APP_VERSION = '20260506-1';
+const APP_VERSION = '20260524-1';
 const CACHE_NAME = `mytasks-shell-${APP_VERSION}`;
 const APP_SHELL = [
   '/',

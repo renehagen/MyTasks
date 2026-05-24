@@ -58,9 +58,25 @@
     return listId && listId !== 'shopping' ? listId : '';
   }
 
+  function normalizeTaskListId(listId) {
+    return listId ? String(listId) : '';
+  }
+
+  function normalizeListType(type) {
+    return type === 'tasklist' ? 'tasklist' : 'checklist';
+  }
+
+  function normalizeList(list) {
+    return {
+      ...list,
+      type: normalizeListType(list.type)
+    };
+  }
+
   function normalizeTask(task) {
     return {
       id: task.id,
+      listId: normalizeTaskListId(task.listId),
       title: task.title || '',
       status: task.status || 'todo',
       priority: task.priority || 'medium',
@@ -213,11 +229,27 @@
     await txDone(tx);
   }
 
+  function hasOwn(obj, key) {
+    return Object.prototype.hasOwnProperty.call(obj, key);
+  }
+
+  async function validateTaskListId(listId) {
+    if (!listId) return;
+    const list = await getOne('lists', listId);
+    if (!list || list.deletedAt || normalizeListType(list.type) !== 'tasklist') {
+      throw new Error('Task list not found');
+    }
+  }
+
   async function listTasks(filters = {}) {
     let tasks = (await getAll('tasks'))
       .filter(task => !task.deletedAt)
       .map(decorateTask);
 
+    if (hasOwn(filters, 'listId')) {
+      const listId = normalizeTaskListId(filters.listId);
+      tasks = tasks.filter(task => normalizeTaskListId(task.listId) === listId);
+    }
     if (filters.status) tasks = tasks.filter(task => task.status === filters.status);
     if (filters.priority) tasks = tasks.filter(task => task.priority === filters.priority);
     if (filters.search) {
@@ -240,10 +272,13 @@
     const now = nowIso();
     const existing = id ? await getOne('tasks', id) : null;
     if (id && (!existing || existing.deletedAt)) return null;
+    const listId = normalizeTaskListId(data.listId !== undefined ? data.listId : existing?.listId || '');
+    await validateTaskListId(listId);
     const task = normalizeTask({
       ...existing,
       ...data,
       id: id || randomId('task'),
+      listId,
       title: data.title !== undefined ? data.title : existing?.title,
       createdAt: existing?.createdAt || now,
       updatedAt: now,
@@ -265,8 +300,15 @@
     return true;
   }
 
-  async function listLists() {
-    return sortLists((await getAll('lists')).filter(list => !list.deletedAt));
+  async function listLists(filters = {}) {
+    let lists = (await getAll('lists'))
+      .filter(list => !list.deletedAt)
+      .map(normalizeList);
+    if (filters.type) {
+      const type = normalizeListType(filters.type);
+      lists = lists.filter(list => list.type === type);
+    }
+    return sortLists(lists);
   }
 
   async function saveList(data, id) {
@@ -279,6 +321,7 @@
       ...existing,
       id: id || randomId('list'),
       name: data.name !== undefined ? data.name : existing?.name || '',
+      type: data.type !== undefined ? normalizeListType(data.type) : normalizeListType(existing?.type),
       sortOrder: data.sortOrder !== undefined ? data.sortOrder : (existing?.sortOrder ?? maxSort + SORT_ORDER_GAP),
       hidden: data.hidden !== undefined ? data.hidden === true : existing?.hidden === true,
       createdAt: existing?.createdAt || now,
@@ -301,6 +344,13 @@
     const items = await getAll('shoppingItems');
     for (const item of items.filter(item => normalizeListId(item.listId) === id && !item.deletedAt)) {
       await putOne('shoppingItems', { ...item, updatedAt: now, deletedAt: now });
+      await queueMutation('shopping', item.id, 'delete', { id: item.id });
+    }
+
+    const tasks = await getAll('tasks');
+    for (const task of tasks.filter(task => normalizeTaskListId(task.listId) === id && !task.deletedAt)) {
+      await putOne('tasks', { ...task, updatedAt: now, deletedAt: now });
+      await queueMutation('task', task.id, 'delete', { id: task.id });
     }
 
     await queueMutation('list', id, 'delete', { id });

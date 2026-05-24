@@ -28,6 +28,7 @@
   const taskForm = document.getElementById('task-form');
   const taskIdField = document.getElementById('task-id');
   const taskTitleField = document.getElementById('task-title');
+  const taskListField = document.getElementById('task-list-select');
   const taskStatusField = document.getElementById('task-status');
   const taskPriorityField = document.getElementById('task-priority');
   const taskStartDateField = document.getElementById('task-start');
@@ -49,6 +50,7 @@
   const listModalTitle = document.getElementById('list-modal-title');
   const listModalClose = document.getElementById('list-modal-close');
   const listForm = document.getElementById('list-form');
+  const listTypeField = document.getElementById('list-type');
   const listNameField = document.getElementById('list-name');
   const hiddenListsSection = document.getElementById('hidden-lists-section');
   const hiddenListsEl = document.getElementById('hidden-lists');
@@ -73,6 +75,7 @@
 
   let currentView = localStorage.getItem('mytasks_current_view') || 'shopping';
   let currentListId = localStorage.getItem('mytasks_current_list_id') || '';
+  if (!['shopping', 'tasks', 'tasklist'].includes(currentView)) currentView = 'shopping';
 
   await window.MyTasksLocal.init();
 
@@ -110,6 +113,22 @@
     return error;
   }
 
+  function normalizeListType(type) {
+    return type === 'tasklist' ? 'tasklist' : 'checklist';
+  }
+
+  function normalizeLists(lists) {
+    return (lists || []).map(list => ({ ...list, type: normalizeListType(list.type) }));
+  }
+
+  function viewShowsTasks() {
+    return currentView === 'tasks' || currentView === 'tasklist';
+  }
+
+  function currentTaskListId() {
+    return currentView === 'tasklist' ? currentListId : '';
+  }
+
   async function api(path, options = {}) {
     const method = (options.method || 'GET').toUpperCase();
     const url = new URL(path, window.location.origin);
@@ -118,11 +137,13 @@
     let result;
 
     if (route === '/tasks' && method === 'GET') {
-      result = await window.MyTasksLocal.listTasks({
+      const filters = {
         search: url.searchParams.get('search') || '',
         status: url.searchParams.get('status') || '',
         priority: url.searchParams.get('priority') || ''
-      });
+      };
+      if (url.searchParams.has('listId')) filters.listId = url.searchParams.get('listId') || '';
+      result = await window.MyTasksLocal.listTasks(filters);
     } else if (route === '/tasks' && method === 'POST') {
       result = await window.MyTasksLocal.saveTask(body);
     } else if (route.startsWith('/tasks/')) {
@@ -139,7 +160,9 @@
         result = { message: 'Task deleted' };
       }
     } else if (route === '/lists' && method === 'GET') {
-      result = await window.MyTasksLocal.listLists();
+      result = await window.MyTasksLocal.listLists({
+        type: url.searchParams.get('type') || ''
+      });
     } else if (route === '/lists' && method === 'POST') {
       result = await window.MyTasksLocal.saveList(body);
     } else if (route.startsWith('/lists/')) {
@@ -198,10 +221,10 @@
 
   async function reloadCurrentView() {
     if (mainApp.hidden) return;
-    if (currentView === 'tasks') {
+    await loadLists();
+    if (viewShowsTasks()) {
       await loadTasks();
     } else {
-      await loadLists();
       await loadShoppingItems();
     }
   }
@@ -312,10 +335,10 @@
     expandedCheckedListId = null;
     showToast('Refreshing...', 0);
     await syncNow({ silent: true });
-    if (currentView === 'tasks') {
+    await loadLists();
+    if (viewShowsTasks()) {
       await loadTasks();
     } else {
-      await loadLists();
       await loadShoppingItems();
     }
     const elapsed = Date.now() - start;
@@ -423,6 +446,7 @@
     const status = filterStatus.value;
     const priority = filterPriority.value;
 
+    params.set('listId', currentTaskListId());
     if (search) params.set('search', search);
     if (status) params.set('status', status);
     if (priority) params.set('priority', priority);
@@ -480,10 +504,39 @@
     deleteTaskBtn.hidden = true;
   }
 
+  function renderTaskListOptions(selectedListId) {
+    taskListField.innerHTML = '';
+    const defaultOption = document.createElement('option');
+    defaultOption.value = '';
+    defaultOption.textContent = 'Tasks';
+    taskListField.appendChild(defaultOption);
+
+    const lists = visibleTaskLists();
+    for (const list of lists) {
+      const option = document.createElement('option');
+      option.value = list.id;
+      option.textContent = list.name;
+      taskListField.appendChild(option);
+    }
+
+    const selected = selectedListId || '';
+    if (selected && !lists.some(list => list.id === selected)) {
+      const current = customLists.find(list => list.id === selected);
+      const option = document.createElement('option');
+      option.value = selected;
+      option.textContent = current ? current.name : 'Current list';
+      option.disabled = true;
+      taskListField.appendChild(option);
+    }
+
+    taskListField.value = selected;
+  }
+
   function openNewModal() {
     modalTitle.textContent = 'New Task';
     taskIdField.value = '';
     taskTitleField.value = '';
+    renderTaskListOptions(currentTaskListId());
     taskStatusField.value = 'todo';
     taskPriorityField.value = 'medium';
     taskStartDateField.value = '';
@@ -498,6 +551,7 @@
     modalTitle.textContent = 'Edit Task';
     taskIdField.value = task.id;
     taskTitleField.value = task.title;
+    renderTaskListOptions(task.listId || '');
     taskStatusField.value = task.status;
     taskPriorityField.value = task.priority;
     taskStartDateField.value = task.startDate || '';
@@ -538,6 +592,7 @@
     const id = taskIdField.value;
     const data = {
       title: taskTitleField.value.trim(),
+      listId: taskListField.value || '',
       status: taskStatusField.value,
       priority: taskPriorityField.value,
       startDate: taskStartDateField.value || null,
@@ -580,28 +635,50 @@
   });
 
   // --- Tabs (dynamic) ---
-  function visibleLists() {
-    return customLists.filter(list => !list.hidden);
+  function listTypeLabel(type) {
+    return normalizeListType(type) === 'tasklist' ? 'Task list' : 'Checklist';
   }
 
-  function hiddenLists() {
-    return customLists.filter(list => list.hidden);
+  function visibleLists(type) {
+    const normalizedType = normalizeListType(type);
+    return customLists.filter(list => list.type === normalizedType && !list.hidden);
+  }
+
+  function visibleChecklists() {
+    return visibleLists('checklist');
+  }
+
+  function visibleTaskLists() {
+    return visibleLists('tasklist');
+  }
+
+  function hiddenLists(type) {
+    const normalizedType = normalizeListType(type);
+    return customLists.filter(list => list.type === normalizedType && list.hidden);
+  }
+
+  function createListTab(list, view) {
+    const tab = document.createElement('button');
+    tab.className = `tab tab-list tab-${list.type}`;
+    tab.dataset.view = view;
+    tab.dataset.listId = list.id;
+    tab.innerHTML = `<span class="tab-label"></span><button class="tab-close" title="List options">&#x2715;</button>`;
+    tab.querySelector('.tab-label').textContent = list.name;
+    return tab;
   }
 
   function renderTabs() {
     // Remove any existing custom-list tabs
     headerTabsEl.querySelectorAll('.tab-list').forEach(el => el.remove());
 
-    // Insert custom list tabs before the Tasks tab
+    // Checklists live with Shopping; task lists live with Tasks.
     const tasksTab = headerTabsEl.querySelector('[data-view="tasks"]');
-    for (const list of visibleLists()) {
-      const tab = document.createElement('button');
-      tab.className = 'tab tab-list';
-      tab.dataset.view = 'list';
-      tab.dataset.listId = list.id;
-      tab.innerHTML = `<span class="tab-label"></span><button class="tab-close" title="List options">&#x2715;</button>`;
-      tab.querySelector('.tab-label').textContent = list.name;
-      headerTabsEl.insertBefore(tab, tasksTab);
+    for (const list of visibleChecklists()) {
+      headerTabsEl.insertBefore(createListTab(list, 'checklist'), tasksTab);
+    }
+
+    for (const list of visibleTaskLists()) {
+      headerTabsEl.insertBefore(createListTab(list, 'tasklist'), addListBtn);
     }
     applyActiveTab();
   }
@@ -613,18 +690,19 @@
       let active = false;
       if (currentView === 'tasks' && view === 'tasks') active = true;
       else if (currentView === 'shopping' && view === 'shopping' && !currentListId) active = true;
-      else if (currentView === 'shopping' && view === 'list' && t.dataset.listId === currentListId) active = true;
+      else if (currentView === 'shopping' && view === 'checklist' && t.dataset.listId === currentListId) active = true;
+      else if (currentView === 'tasklist' && view === 'tasklist' && t.dataset.listId === currentListId) active = true;
       t.classList.toggle('active', active);
     });
   }
 
   function activateView(view, listId) {
     currentView = view;
-    currentListId = listId || '';
+    currentListId = view === 'tasks' ? '' : listId || '';
     localStorage.setItem('mytasks_current_view', view);
     localStorage.setItem('mytasks_current_list_id', currentListId);
     applyActiveTab();
-    if (view === 'tasks') {
+    if (view === 'tasks' || view === 'tasklist') {
       tasksView.hidden = false;
       shoppingView.hidden = true;
       loadTasks();
@@ -637,10 +715,8 @@
 
   async function restoreActiveTab() {
     await loadLists();
-    // If stored list id no longer exists or is hidden, fall back to Shopping
-    if (currentListId && !visibleLists().some(l => l.id === currentListId)) {
-      currentListId = '';
-      localStorage.setItem('mytasks_current_list_id', '');
+    if (currentView === 'tasklist' && !currentListId) {
+      currentView = 'tasks';
     }
     activateView(currentView, currentListId);
   }
@@ -648,7 +724,8 @@
   function openListActionModal(list) {
     selectedListForAction = list;
     listActionTitle.textContent = list.name;
-    listActionMessage.textContent = 'Hide this tab, or delete the list and all its items.';
+    const contents = list.type === 'tasklist' ? 'tasks' : 'items';
+    listActionMessage.textContent = `Hide this tab, or delete the ${listTypeLabel(list.type).toLowerCase()} and all its ${contents}.`;
     listActionModal.hidden = false;
     setTimeout(() => listActionHideBtn.focus(), 0);
   }
@@ -658,12 +735,12 @@
     selectedListForAction = null;
   }
 
-  function fallBackFromList(listId) {
-    if (currentListId !== listId) return;
+  function fallBackFromList(list) {
+    if (currentListId !== list.id) return;
     currentListId = '';
     localStorage.setItem('mytasks_current_list_id', '');
-    currentView = 'shopping';
-    localStorage.setItem('mytasks_current_view', 'shopping');
+    currentView = list.type === 'tasklist' ? 'tasks' : 'shopping';
+    localStorage.setItem('mytasks_current_view', currentView);
   }
 
   async function hideList(list) {
@@ -671,16 +748,16 @@
       method: 'PUT',
       body: JSON.stringify({ hidden: true })
     });
-    showToast('List hidden');
-    fallBackFromList(list.id);
+    showToast(`${listTypeLabel(list.type)} hidden`);
+    fallBackFromList(list);
     await loadLists();
     activateView(currentView, currentListId);
   }
 
   async function deleteList(list) {
     await api(`/lists/${list.id}`, { method: 'DELETE' });
-    showToast('List deleted');
-    fallBackFromList(list.id);
+    showToast(`${listTypeLabel(list.type)} deleted`);
+    fallBackFromList(list);
     await loadLists();
     activateView(currentView, currentListId);
   }
@@ -701,10 +778,14 @@
     const tab = e.target.closest('.tab');
     if (!tab || tab.classList.contains('tab-add')) return;
     const view = tab.dataset.view;
-    if (view === 'list') {
+    if (view === 'checklist') {
       const listId = tab.dataset.listId;
       if (currentView === 'shopping' && currentListId === listId) return;
       activateView('shopping', listId);
+    } else if (view === 'tasklist') {
+      const listId = tab.dataset.listId;
+      if (currentView === 'tasklist' && currentListId === listId) return;
+      activateView('tasklist', listId);
     } else if (view === 'tasks') {
       if (currentView === 'tasks') return;
       activateView('tasks', '');
@@ -719,21 +800,32 @@
   async function loadLists() {
     let loaded = false;
     try {
-      customLists = await api('/lists');
+      customLists = normalizeLists(await api('/lists'));
       loaded = true;
     } catch (err) {
       customLists = [];
     }
-    if (loaded && currentListId && !visibleLists().some(l => l.id === currentListId)) {
-      fallBackFromList(currentListId);
+    if (loaded && currentListId) {
+      const visible = currentView === 'tasklist'
+        ? visibleTaskLists().some(l => l.id === currentListId)
+        : currentView === 'shopping'
+          ? visibleChecklists().some(l => l.id === currentListId)
+          : true;
+      if (!visible) {
+        const fallbackType = currentView === 'tasklist' ? 'tasklist' : 'checklist';
+        fallBackFromList(customLists.find(l => l.id === currentListId) || { id: currentListId, type: fallbackType });
+      }
     }
     renderTabs();
   }
 
   function renderHiddenListChoices() {
-    const lists = hiddenLists();
+    const type = listTypeField.value;
+    const lists = hiddenLists(type);
+    const title = hiddenListsSection.querySelector('.hidden-lists-title');
     hiddenListsEl.innerHTML = '';
     hiddenListsSection.hidden = lists.length === 0;
+    title.textContent = type === 'tasklist' ? 'Hidden task lists' : 'Hidden checklists';
 
     for (const list of lists) {
       const row = document.createElement('div');
@@ -762,10 +854,21 @@
     }
   }
 
-  function openListModal() {
-    listModalTitle.textContent = 'Add list';
-    listNameField.value = '';
+  function updateListModalCopy() {
+    const type = listTypeField.value;
+    const label = listTypeLabel(type);
+    listModalTitle.textContent = `Add ${label.toLowerCase()}`;
+    listNameField.previousElementSibling.textContent = `New ${label.toLowerCase()}`;
+    listNameField.placeholder = type === 'tasklist'
+      ? 'e.g. Work, Home, Admin'
+      : 'e.g. Packing, Party, Hardware';
     renderHiddenListChoices();
+  }
+
+  function openListModal() {
+    listTypeField.value = 'checklist';
+    listNameField.value = '';
+    updateListModalCopy();
     listModal.hidden = false;
     setTimeout(() => listNameField.focus(), 0);
   }
@@ -783,10 +886,11 @@
     showToast('List shown');
     closeListModal();
     await loadLists();
-    activateView('shopping', list.id);
+    activateView(list.type === 'tasklist' ? 'tasklist' : 'shopping', list.id);
   }
 
   addListBtn.addEventListener('click', openListModal);
+  listTypeField.addEventListener('change', updateListModalCopy);
   listModalClose.addEventListener('click', closeListModal);
   listCancelBtn.addEventListener('click', closeListModal);
   listModal.addEventListener('click', (e) => {
@@ -834,13 +938,14 @@
   listForm.addEventListener('submit', async (e) => {
     e.preventDefault();
     const name = listNameField.value.trim();
+    const type = listTypeField.value;
     if (!name) return;
     try {
-      const list = await api('/lists', { method: 'POST', body: JSON.stringify({ name }) });
-      showToast('List created');
+      const list = await api('/lists', { method: 'POST', body: JSON.stringify({ name, type }) });
+      showToast(`${listTypeLabel(list.type)} created`);
       closeListModal();
       await loadLists();
-      activateView('shopping', list.id);
+      activateView(list.type === 'tasklist' ? 'tasklist' : 'shopping', list.id);
     } catch (err) {
       showToast(err.message);
     }

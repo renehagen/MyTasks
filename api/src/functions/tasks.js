@@ -5,6 +5,10 @@ const storage = require('../shared/storage');
 const VALID_STATUSES = ['backlog', 'todo', 'in-progress', 'done', 'cancelled'];
 const VALID_PRIORITIES = ['low', 'medium', 'high'];
 
+function listIdFilter(request) {
+  return request.query.has('listId') ? { listId: request.query.get('listId') || '' } : {};
+}
+
 // GET /api/tasks
 app.http('listTasks', {
   methods: ['GET'],
@@ -18,14 +22,13 @@ app.http('listTasks', {
       const status = request.query.get('status');
       const priority = request.query.get('priority');
       const search = request.query.get('search');
+      const filters = { status, priority, ...listIdFilter(request) };
 
       let tasks;
       if (search) {
-        tasks = await storage.searchTasks(search);
-        if (status) tasks = tasks.filter(t => t.status === status);
-        if (priority) tasks = tasks.filter(t => t.priority === priority);
+        tasks = await storage.searchTasks(search, filters);
       } else {
-        tasks = await storage.listTasks({ status, priority });
+        tasks = await storage.listTasks(filters);
       }
 
       return { jsonBody: tasks };
@@ -88,11 +91,15 @@ app.http('createTask', {
         notes: body.notes,
         startDate: body.startDate,
         dueDate: body.dueDate,
-        waiting: body.waiting
+        waiting: body.waiting,
+        listId: body.listId
       });
 
       return { status: 201, jsonBody: task };
     } catch (err) {
+      if (err.statusCode === 400) {
+        return { status: 400, jsonBody: { error: err.message } };
+      }
       context.error('createTask error:', err);
       return { status: 500, jsonBody: { error: 'Failed to create task' } };
     }
@@ -126,7 +133,8 @@ app.http('updateTask', {
         notes: body.notes,
         startDate: body.startDate,
         dueDate: body.dueDate,
-        waiting: body.waiting
+        waiting: body.waiting,
+        listId: body.listId
       });
 
       if (!task) {
@@ -137,6 +145,9 @@ app.http('updateTask', {
     } catch (err) {
       if (err.statusCode === 404) {
         return { status: 404, jsonBody: { error: 'Task not found' } };
+      }
+      if (err.statusCode === 400) {
+        return { status: 400, jsonBody: { error: err.message } };
       }
       context.error('updateTask error:', err);
       return { status: 500, jsonBody: { error: 'Failed to update task' } };

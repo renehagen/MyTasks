@@ -2,6 +2,16 @@ const { app } = require('@azure/functions');
 const { validateApiKey, unauthorizedResponse } = require('../shared/auth');
 const storage = require('../shared/storage');
 
+const VALID_LIST_TYPES = ['checklist', 'tasklist'];
+
+function validateListType(type) {
+  if (type === undefined || type === null || type === '') return null;
+  if (!VALID_LIST_TYPES.includes(type)) {
+    return { status: 400, jsonBody: { error: `Invalid type. Must be one of: ${VALID_LIST_TYPES.join(', ')}` } };
+  }
+  return null;
+}
+
 // GET /api/lists
 app.http('listLists', {
   methods: ['GET'],
@@ -12,7 +22,10 @@ app.http('listLists', {
     if (!auth.valid) return unauthorizedResponse(auth);
 
     try {
-      const lists = await storage.listLists();
+      const type = request.query.get('type');
+      const invalidType = validateListType(type);
+      if (invalidType) return invalidType;
+      const lists = await storage.listLists(type ? { type } : {});
       return { jsonBody: lists };
     } catch (err) {
       context.error('listLists error:', err);
@@ -36,7 +49,9 @@ app.http('createList', {
       if (!name) {
         return { status: 400, jsonBody: { error: 'Name is required' } };
       }
-      const list = await storage.createList({ name });
+      const invalidType = validateListType(body.type);
+      if (invalidType) return invalidType;
+      const list = await storage.createList({ name, type: body.type || 'checklist' });
       return { status: 201, jsonBody: list };
     } catch (err) {
       context.error('createList error:', err);
@@ -72,6 +87,12 @@ app.http('updateList', {
           return { status: 400, jsonBody: { error: 'Hidden must be a boolean' } };
         }
         data.hidden = body.hidden;
+      }
+
+      if (body.type !== undefined) {
+        const invalidType = validateListType(body.type);
+        if (invalidType) return invalidType;
+        data.type = body.type;
       }
 
       if (Object.keys(data).length === 0) {

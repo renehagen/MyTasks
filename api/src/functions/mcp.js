@@ -12,7 +12,7 @@ const PROTOCOL_VERSION = '2025-03-26';
 const TOOL_DEFINITIONS = [
   {
     name: 'list_tasks',
-    description: 'List all tasks, optionally filtered by status and/or priority.',
+    description: 'List tasks, optionally filtered by status, priority, and task list. Omit listId for all tasks; pass an empty string for the fixed Tasks list.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -25,7 +25,8 @@ const TOOL_DEFINITIONS = [
           type: 'string',
           enum: ['low', 'medium', 'high'],
           description: 'Filter by task priority'
-        }
+        },
+        listId: { type: 'string', description: 'Custom task list ID. Omit for all tasks; pass empty string for the fixed Tasks list.' }
       }
     }
   },
@@ -60,7 +61,8 @@ const TOOL_DEFINITIONS = [
         notes: { type: 'string', description: 'Additional notes' },
         startDate: { type: 'string', description: 'Start date ("do date") in YYYY-MM-DD format' },
         dueDate: { type: 'string', description: 'Due date (hard deadline) in YYYY-MM-DD format' },
-        waiting: { type: 'boolean', description: 'Whether the task is waiting on someone else (default: false)' }
+        waiting: { type: 'boolean', description: 'Whether the task is waiting on someone else (default: false)' },
+        listId: { type: 'string', description: 'Custom task list ID from list_task_lists. Omit or empty string for the fixed Tasks list.' }
       },
       required: ['title']
     }
@@ -86,7 +88,8 @@ const TOOL_DEFINITIONS = [
         notes: { type: 'string', description: 'New notes' },
         startDate: { type: 'string', description: 'New start date ("do date") in YYYY-MM-DD format' },
         dueDate: { type: 'string', description: 'New due date (hard deadline) in YYYY-MM-DD format' },
-        waiting: { type: 'boolean', description: 'Whether the task is waiting on someone else' }
+        waiting: { type: 'boolean', description: 'Whether the task is waiting on someone else' },
+        listId: { type: 'string', description: 'Move to this custom task list ID. Pass empty string to move to the fixed Tasks list.' }
       },
       required: ['id']
     }
@@ -108,7 +111,8 @@ const TOOL_DEFINITIONS = [
     inputSchema: {
       type: 'object',
       properties: {
-        query: { type: 'string', description: 'Search keyword' }
+        query: { type: 'string', description: 'Search keyword' },
+        listId: { type: 'string', description: 'Custom task list ID. Omit for all tasks; pass empty string for the fixed Tasks list.' }
       },
       required: ['query']
     }
@@ -161,7 +165,7 @@ const TOOL_DEFINITIONS = [
   },
   {
     name: 'list_lists',
-    description: 'List all custom checklists (excluding the fixed Shopping list). Each entry has { id, name, sortOrder, hidden, createdAt, updatedAt }.',
+    description: 'List all custom checklists (excluding the fixed Shopping list). Each entry has { id, name, type, sortOrder, hidden, createdAt, updatedAt }.',
     inputSchema: { type: 'object', properties: {} }
   },
   {
@@ -197,6 +201,45 @@ const TOOL_DEFINITIONS = [
       },
       required: ['id']
     }
+  },
+  {
+    name: 'list_task_lists',
+    description: 'List all custom task lists. Each entry has { id, name, type, sortOrder, hidden, createdAt, updatedAt }.',
+    inputSchema: { type: 'object', properties: {} }
+  },
+  {
+    name: 'create_task_list',
+    description: 'Create a new custom task list. The returned id can be passed as listId to task tools.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Name of the task list (required)' }
+      },
+      required: ['name']
+    }
+  },
+  {
+    name: 'update_task_list_visibility',
+    description: 'Hide or show a custom task list tab without deleting its tasks.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'The task list ID' },
+        hidden: { type: 'boolean', description: 'true to hide the tab, false to show it again' }
+      },
+      required: ['id', 'hidden']
+    }
+  },
+  {
+    name: 'delete_task_list',
+    description: 'Delete a custom task list and all its tasks.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'The task list ID' }
+      },
+      required: ['id']
+    }
   }
 ];
 
@@ -208,13 +251,29 @@ function jsonRpcError(id, code, message) {
   return { jsonrpc: '2.0', id, error: { code, message } };
 }
 
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function taskFilters(args) {
+  const filters = {
+    status: args.status,
+    priority: args.priority
+  };
+  if (hasOwn(args, 'listId')) filters.listId = args.listId || '';
+  return filters;
+}
+
+async function getTypedList(id, type) {
+  const list = await storage.getList(id);
+  if (!list || list.type !== type) return null;
+  return list;
+}
+
 async function handleToolCall(name, args) {
   switch (name) {
     case 'list_tasks': {
-      const tasks = await storage.listTasks({
-        status: args.status,
-        priority: args.priority
-      });
+      const tasks = await storage.listTasks(taskFilters(args));
       return { content: [{ type: 'text', text: JSON.stringify(tasks, null, 2) }] };
     }
     case 'get_task': {
@@ -236,7 +295,8 @@ async function handleToolCall(name, args) {
         notes: args.notes,
         startDate: args.startDate,
         dueDate: args.dueDate,
-        waiting: args.waiting === true
+        waiting: args.waiting === true,
+        listId: args.listId || ''
       });
       return { content: [{ type: 'text', text: JSON.stringify(task, null, 2) }] };
     }
@@ -264,7 +324,7 @@ async function handleToolCall(name, args) {
       if (!args.query) {
         return { content: [{ type: 'text', text: 'Search query is required' }], isError: true };
       }
-      const tasks = await storage.searchTasks(args.query);
+      const tasks = await storage.searchTasks(args.query, taskFilters(args));
       return { content: [{ type: 'text', text: JSON.stringify(tasks, null, 2) }] };
     }
     case 'list_shopping_items': {
@@ -282,14 +342,14 @@ async function handleToolCall(name, args) {
       return { content: [{ type: 'text', text: JSON.stringify(item, null, 2) }] };
     }
     case 'list_lists': {
-      const lists = await storage.listLists();
+      const lists = await storage.listLists({ type: 'checklist' });
       return { content: [{ type: 'text', text: JSON.stringify(lists, null, 2) }] };
     }
     case 'create_list': {
       if (!args.name) {
         return { content: [{ type: 'text', text: 'Name is required' }], isError: true };
       }
-      const list = await storage.createList({ name: args.name });
+      const list = await storage.createList({ name: args.name, type: 'checklist' });
       return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
     }
     case 'update_list_visibility': {
@@ -299,21 +359,65 @@ async function handleToolCall(name, args) {
       if (typeof args.hidden !== 'boolean') {
         return { content: [{ type: 'text', text: 'Hidden must be a boolean' }], isError: true };
       }
-      const list = await storage.updateList(args.id, { hidden: args.hidden });
-      if (!list) {
-        return { content: [{ type: 'text', text: 'List not found' }], isError: true };
+      const existing = await getTypedList(args.id, 'checklist');
+      if (!existing) {
+        return { content: [{ type: 'text', text: 'Checklist not found' }], isError: true };
       }
+      const list = await storage.updateList(args.id, { hidden: args.hidden });
       return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
     }
     case 'delete_list': {
       if (!args.id) {
         return { content: [{ type: 'text', text: 'List ID is required' }], isError: true };
       }
+      const existing = await getTypedList(args.id, 'checklist');
+      if (!existing) {
+        return { content: [{ type: 'text', text: 'Checklist not found' }], isError: true };
+      }
       const didDelete = await storage.deleteList(args.id);
       if (!didDelete) {
-        return { content: [{ type: 'text', text: 'List not found' }], isError: true };
+        return { content: [{ type: 'text', text: 'Checklist not found' }], isError: true };
       }
-      return { content: [{ type: 'text', text: `List ${args.id} deleted successfully` }] };
+      return { content: [{ type: 'text', text: `Checklist ${args.id} deleted successfully` }] };
+    }
+    case 'list_task_lists': {
+      const lists = await storage.listLists({ type: 'tasklist' });
+      return { content: [{ type: 'text', text: JSON.stringify(lists, null, 2) }] };
+    }
+    case 'create_task_list': {
+      if (!args.name) {
+        return { content: [{ type: 'text', text: 'Name is required' }], isError: true };
+      }
+      const list = await storage.createList({ name: args.name, type: 'tasklist' });
+      return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
+    }
+    case 'update_task_list_visibility': {
+      if (!args.id) {
+        return { content: [{ type: 'text', text: 'Task list ID is required' }], isError: true };
+      }
+      if (typeof args.hidden !== 'boolean') {
+        return { content: [{ type: 'text', text: 'Hidden must be a boolean' }], isError: true };
+      }
+      const existing = await getTypedList(args.id, 'tasklist');
+      if (!existing) {
+        return { content: [{ type: 'text', text: 'Task list not found' }], isError: true };
+      }
+      const list = await storage.updateList(args.id, { hidden: args.hidden });
+      return { content: [{ type: 'text', text: JSON.stringify(list, null, 2) }] };
+    }
+    case 'delete_task_list': {
+      if (!args.id) {
+        return { content: [{ type: 'text', text: 'Task list ID is required' }], isError: true };
+      }
+      const existing = await getTypedList(args.id, 'tasklist');
+      if (!existing) {
+        return { content: [{ type: 'text', text: 'Task list not found' }], isError: true };
+      }
+      const didDelete = await storage.deleteList(args.id);
+      if (!didDelete) {
+        return { content: [{ type: 'text', text: 'Task list not found' }], isError: true };
+      }
+      return { content: [{ type: 'text', text: `Task list ${args.id} deleted successfully` }] };
     }
     case 'update_shopping_item': {
       if (!args.id) {

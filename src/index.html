@@ -7,7 +7,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <title>MyTasks</title>
-  <link rel="stylesheet" href="/styles.css?v=20260506-1">
+  <link rel="stylesheet" href="/styles.css?v=20260524-1">
   <link rel="manifest" href="/manifest.json">
   <link rel="icon" href="/icons/icon-192.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="/icons/icon-192.png">
@@ -103,6 +103,10 @@
             <label for="task-title">Title</label>
             <input type="text" id="task-title" required placeholder="What needs to be done?">
           </div>
+          <div class="form-group">
+            <label for="task-list-select">List</label>
+            <select id="task-list-select"></select>
+          </div>
           <div class="form-row">
             <div class="form-group">
               <label for="task-status">Status</label>
@@ -163,6 +167,13 @@
         </div>
         <form id="list-form">
           <div class="form-group">
+            <label for="list-type">Type</label>
+            <select id="list-type">
+              <option value="checklist">Checklist</option>
+              <option value="tasklist">Task list</option>
+            </select>
+          </div>
+          <div class="form-group">
             <label for="list-name">New list</label>
             <input type="text" id="list-name" required placeholder="e.g. Packing, Party, Hardware" autocomplete="off">
           </div>
@@ -202,8 +213,8 @@
     <div id="toast" class="toast" hidden></div>
   </div>
 
-  <script src="/local-store.js?v=20260506-1"></script>
-  <script src="/app.js?v=20260506-1"></script>
-  <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js?v=20260506-1');</script>
+  <script src="/local-store.js?v=20260524-1"></script>
+  <script src="/app.js?v=20260524-1"></script>
+  <script>if ('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js?v=20260524-1');</script>
 </body>
 </html>

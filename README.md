@@ -137,11 +137,20 @@ All endpoints require an `x-api-key` header (or `Authorization: Bearer <key>`).
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `GET` | `/api/tasks` | List tasks. Query params: `status`, `priority`, `search` |
+| `GET` | `/api/tasks` | List tasks. Query params: `status`, `priority`, `search`, `listId` |
 | `GET` | `/api/tasks/{id}` | Get a single task |
 | `POST` | `/api/tasks` | Create a task |
 | `PUT` | `/api/tasks/{id}` | Update a task |
 | `DELETE` | `/api/tasks/{id}` | Delete a task |
+
+### Lists
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/lists` | List custom lists. Query param: `type=checklist|tasklist` |
+| `POST` | `/api/lists` | Create a custom checklist or task list |
+| `PUT` | `/api/lists/{id}` | Update a custom list name, visibility, or type |
+| `DELETE` | `/api/lists/{id}` | Delete a custom list and its checklist items or tasks |
 
 ### Sync
 
@@ -154,11 +163,30 @@ All endpoints require an `x-api-key` header (or `Authorization: Bearer <key>`).
 ```json
 {
   "id": "uuid",
+  "listId": "uuid | empty string",
   "title": "string",
   "status": "backlog | todo | in-progress | done | cancelled",
   "priority": "low | medium | high",
   "notes": "string",
+  "startDate": "YYYY-MM-DD | null",
   "dueDate": "YYYY-MM-DD | null",
+  "waiting": "boolean",
+  "createdAt": "ISO 8601",
+  "updatedAt": "ISO 8601"
+}
+```
+
+An empty or missing `listId` means the fixed `Tasks` list. A non-empty `listId` must refer to a custom list with `type: "tasklist"`.
+
+### List Object
+
+```json
+{
+  "id": "uuid",
+  "name": "string",
+  "type": "checklist | tasklist",
+  "sortOrder": 1000,
+  "hidden": false,
   "createdAt": "ISO 8601",
   "updatedAt": "ISO 8601"
 }
@@ -172,12 +200,20 @@ The MCP endpoint at `/api/mcp` implements the [Model Context Protocol](https://m
 
 | Tool | Description |
 |------|-------------|
-| `list_tasks` | List tasks with optional status/priority filters |
+| `list_tasks` | List tasks with optional status/priority/listId filters |
 | `get_task` | Get a specific task by ID |
-| `create_task` | Create a new task |
-| `update_task` | Update an existing task |
+| `create_task` | Create a new task, optionally in a custom task list |
+| `update_task` | Update an existing task, including moving it with `listId` |
 | `delete_task` | Delete a task |
-| `search_tasks` | Search tasks by keyword |
+| `search_tasks` | Search tasks by keyword, optionally within a task list |
+| `list_lists` | List custom checklists |
+| `create_list` | Create a custom checklist |
+| `update_list_visibility` | Hide or show a custom checklist |
+| `delete_list` | Delete a custom checklist and its items |
+| `list_task_lists` | List custom task lists |
+| `create_task_list` | Create a custom task list |
+| `update_task_list_visibility` | Hide or show a custom task list |
+| `delete_task_list` | Delete a custom task list and its tasks |
 
 ### Connecting Claude.ai
 

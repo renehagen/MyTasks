@@ -49,6 +49,24 @@ function isTaskEntity(entity) {
   return entity.category !== 'shopping' && entity.category !== 'list';
 }
 
+function badRequest(message) {
+  const err = new Error(message);
+  err.statusCode = 400;
+  return err;
+}
+
+function hasOwn(obj, key) {
+  return Object.prototype.hasOwnProperty.call(obj, key);
+}
+
+function normalizeTaskListId(listId) {
+  return listId ? String(listId) : '';
+}
+
+function normalizeListType(type) {
+  return type === 'tasklist' ? 'tasklist' : 'checklist';
+}
+
 function sortTasks(tasks) {
   const priorityOrder = { 'high': 0, 'medium': 1, 'low': 2 };
 
@@ -122,6 +140,7 @@ function entityToTask(entity) {
   const today = new Date().toISOString().slice(0, 10);
   const task = {
     id: entity.rowKey,
+    listId: normalizeTaskListId(entity.listId),
     title: entity.title,
     status: entity.status,
     priority: entity.priority,
@@ -148,6 +167,34 @@ function entityToTask(entity) {
   return task;
 }
 
+function entityToList(entity) {
+  return {
+    id: entity.rowKey,
+    name: entity.name,
+    type: normalizeListType(entity.type),
+    sortOrder: entity.sortOrder || 0,
+    hidden: entity.hidden === true,
+    createdAt: entity.createdAt,
+    updatedAt: entity.updatedAt,
+    deletedAt: entity.deletedAt || null
+  };
+}
+
+async function getList(id) {
+  await ensureTable();
+  const entity = await getEntityOrNull(id);
+  if (!entity || entity.category !== 'list' || isDeleted(entity)) return null;
+  return entityToList(entity);
+}
+
+async function validateTaskListId(listId) {
+  if (!listId) return;
+  const list = await getList(listId);
+  if (!list || list.type !== 'tasklist') {
+    throw badRequest('Task list not found');
+  }
+}
+
 async function listTasks(filters = {}) {
   await ensureTable();
   const client = getTableClient();
@@ -164,9 +211,13 @@ async function listTasks(filters = {}) {
   const entities = client.listEntities({ queryOptions: { filter: queryFilter } });
 
   const tasks = [];
+  const shouldFilterList = hasOwn(filters, 'listId');
+  const listId = shouldFilterList ? normalizeTaskListId(filters.listId) : null;
   for await (const entity of entities) {
     if (!isTaskEntity(entity) || isDeleted(entity)) continue;
-    tasks.push(entityToTask(entity));
+    const task = entityToTask(entity);
+    if (shouldFilterList && task.listId !== listId) continue;
+    tasks.push(task);
   }
 
   return sortTasks(tasks);
@@ -184,9 +235,12 @@ async function createTask(data) {
   const client = getTableClient();
 
   const now = nowIso();
+  const listId = normalizeTaskListId(data.listId);
+  await validateTaskListId(listId);
   const entity = {
     partitionKey: PARTITION_KEY,
     rowKey: data.id || uuidv4(),
+    listId,
     title: data.title,
     status: data.status || 'todo',
     priority: data.priority || 'medium',
@@ -209,9 +263,12 @@ async function updateTask(id, data) {
   const existing = await getEntityOrNull(id);
   if (!existing || !isTaskEntity(existing) || isDeleted(existing)) return null;
 
+  const listId = normalizeTaskListId(data.listId !== undefined ? data.listId : existing.listId || '');
+  await validateTaskListId(listId);
   const updated = {
     partitionKey: PARTITION_KEY,
     rowKey: id,
+    listId,
     title: data.title !== undefined ? data.title : existing.title,
     status: data.status !== undefined ? data.status : existing.status,
     priority: data.priority !== undefined ? data.priority : existing.priority,
@@ -231,11 +288,11 @@ async function deleteTask(id) {
   return markDeleted(id, 'task');
 }
 
-async function searchTasks(query) {
+async function searchTasks(query, filters = {}) {
   await ensureTable();
   // Azure Table Storage doesn't support contains queries natively,
   // so we fetch all and filter in memory
-  const allTasks = await listTasks();
+  const allTasks = await listTasks(filters);
   const lowerQuery = query.toLowerCase();
   return allTasks.filter(t =>
     t.title.toLowerCase().includes(lowerQuery) ||
@@ -258,28 +315,19 @@ function entityToShoppingItem(entity) {
   };
 }
 
-function entityToList(entity) {
-  return {
-    id: entity.rowKey,
-    name: entity.name,
-    sortOrder: entity.sortOrder || 0,
-    hidden: entity.hidden === true,
-    createdAt: entity.createdAt,
-    updatedAt: entity.updatedAt,
-    deletedAt: entity.deletedAt || null
-  };
-}
-
-async function listLists() {
+async function listLists(filters = {}) {
   await ensureTable();
   const client = getTableClient();
   const filter = `PartitionKey eq '${PARTITION_KEY}' and category eq 'list'`;
   const entities = client.listEntities({ queryOptions: { filter } });
 
   const lists = [];
+  const type = filters.type ? normalizeListType(filters.type) : null;
   for await (const entity of entities) {
     if (isDeleted(entity)) continue;
-    lists.push(entityToList(entity));
+    const list = entityToList(entity);
+    if (type && list.type !== type) continue;
+    lists.push(list);
   }
   lists.sort((a, b) => a.sortOrder - b.sortOrder);
   return lists;
@@ -290,7 +338,8 @@ async function createList(data) {
   const client = getTableClient();
   const now = nowIso();
 
-  const existing = await listLists();
+  const type = normalizeListType(data.type);
+  const existing = await listLists({ type });
   const maxSort = existing.reduce((max, l) => Math.max(max, l.sortOrder), 0);
 
   const entity = {
@@ -298,6 +347,7 @@ async function createList(data) {
     rowKey: data.id || uuidv4(),
     category: 'list',
     name: data.name,
+    type,
     sortOrder: data.sortOrder !== undefined ? data.sortOrder : maxSort + SORT_ORDER_GAP,
     hidden: false,
     createdAt: now,
@@ -327,6 +377,7 @@ async function updateList(id, data) {
     rowKey: id,
     category: 'list',
     name: data.name !== undefined ? data.name : existing.name,
+    type: data.type !== undefined ? normalizeListType(data.type) : normalizeListType(existing.type),
     sortOrder: existing.sortOrder || 0,
     hidden: data.hidden !== undefined ? data.hidden === true : existing.hidden === true,
     createdAt: existing.createdAt,
@@ -343,6 +394,11 @@ async function deleteList(id) {
   const items = await listShoppingItems(id);
   for (const item of items) {
     await markDeleted(item.id, 'shopping');
+  }
+
+  const tasks = await listTasks({ listId: id });
+  for (const task of tasks) {
+    await markDeleted(task.id, 'task');
   }
 
   return markDeleted(id, 'list');
@@ -476,9 +532,12 @@ async function upsertTaskFromSync(data) {
     throw new Error(`Cannot sync task ${id}: ID belongs to another record type`);
   }
 
+  const listId = normalizeTaskListId(data.listId !== undefined ? data.listId : existing?.listId || '');
+  await validateTaskListId(listId);
   const entity = {
     partitionKey: PARTITION_KEY,
     rowKey: id,
+    listId,
     title: data.title !== undefined ? data.title : existing?.title || '',
     status: data.status !== undefined ? data.status : existing?.status || 'todo',
     priority: data.priority !== undefined ? data.priority : existing?.priority || 'medium',
@@ -511,6 +570,7 @@ async function upsertListFromSync(data) {
     rowKey: id,
     category: 'list',
     name: data.name !== undefined ? data.name : existing?.name || '',
+    type: data.type !== undefined ? normalizeListType(data.type) : normalizeListType(existing?.type),
     sortOrder: data.sortOrder !== undefined ? data.sortOrder : existing?.sortOrder || 0,
     hidden: data.hidden !== undefined ? data.hidden === true : existing?.hidden === true,
     createdAt: existing?.createdAt || data.createdAt || now,
@@ -592,6 +652,6 @@ async function listChanges(since) {
 module.exports = {
   listTasks, getTask, createTask, updateTask, deleteTask, searchTasks,
   listShoppingItems, createShoppingItem, updateShoppingItem, deleteShoppingItem, reorderShoppingItems,
-  listLists, createList, updateList, deleteList,
+  listLists, getList, createList, updateList, deleteList,
   upsertTaskFromSync, upsertListFromSync, upsertShoppingItemFromSync, listChanges
 };

@@ -47,6 +47,13 @@ async function applyOperation(operation) {
   return storage.upsertShoppingItemFromSync(op.data);
 }
 
+function operationRank(operation) {
+  if (operation.entityType === 'list' && operation.action === 'upsert') return 0;
+  if (operation.action === 'upsert') return 1;
+  if (operation.entityType !== 'list' && operation.action === 'delete') return 2;
+  return 3;
+}
+
 // POST /api/sync
 app.http('sync', {
   methods: ['POST'],
@@ -59,8 +66,9 @@ app.http('sync', {
     try {
       const body = await request.json();
       const operations = Array.isArray(body.operations) ? body.operations : [];
+      const orderedOperations = [...operations].sort((a, b) => operationRank(a) - operationRank(b));
 
-      for (const operation of operations) {
+      for (const operation of orderedOperations) {
         await applyOperation(operation);
       }
 
@@ -75,7 +83,7 @@ app.http('sync', {
         }
       };
     } catch (err) {
-      if (err.message && (err.message.startsWith('Invalid ') || err.message.includes('required'))) {
+      if (err.statusCode === 400 || (err.message && (err.message.startsWith('Invalid ') || err.message.includes('required')))) {
         return badRequest(err.message);
       }
       context.error('sync error:', err);
