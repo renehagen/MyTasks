@@ -388,7 +388,8 @@
 
   function renderTask(task) {
     const row = document.createElement('div');
-    row.className = 'task-row';
+    const priority = ['low', 'medium', 'high'].includes(task.priority) ? task.priority : 'medium';
+    row.className = `task-row priority-${priority}`;
     row.dataset.id = task.id;
 
     const isDone = task.status === 'done' || task.status === 'cancelled';
@@ -400,12 +401,15 @@
     const tagHtml = getTaskStateTags(task, isDone)
       .map(tag => `<span class="task-row-tag ${tag}">${escapeHtml(tag)}</span>`)
       .join('');
+    const priorityHtml = priority === 'high'
+      ? '<span class="task-row-tag priority-high">high</span>'
+      : '';
 
     row.innerHTML = `
-      <span class="task-row-priority ${task.priority}"></span>
+      <span class="task-row-priority ${priority}" title="${priority} priority" aria-label="${priority} priority"></span>
       <span class="task-row-title${titleClass}">${escapeHtml(task.title)}</span>
       <span class="task-row-meta">
-        <span class="task-row-tags">${tagHtml}</span>
+        <span class="task-row-tags">${priorityHtml}${tagHtml}</span>
         ${dueHtml}
         <span class="task-row-status ${task.status}">${task.status}</span>
       </span>
