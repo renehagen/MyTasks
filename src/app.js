@@ -444,6 +444,14 @@
 
   // --- Task Loading ---
   let debounceTimer;
+
+  function compareTasksByDueDateDesc(a, b) {
+    if (a.dueDate && b.dueDate) return b.dueDate.localeCompare(a.dueDate);
+    if (a.dueDate) return -1;
+    if (b.dueDate) return 1;
+    return 0;
+  }
+
   async function loadTasks() {
     const params = new URLSearchParams();
     const search = filterSearch.value.trim();
@@ -458,8 +466,12 @@
     const qs = params.toString();
     try {
       const allTasks = await api(`/tasks${qs ? '?' + qs : ''}`);
-      const activeTasks = allTasks.filter(t => t.status !== 'done' && t.status !== 'cancelled');
-      const doneTasks = allTasks.filter(t => t.status === 'done' || t.status === 'cancelled');
+      const activeTasks = allTasks
+        .filter(t => t.status !== 'done' && t.status !== 'cancelled')
+        .sort(compareTasksByDueDateDesc);
+      const doneTasks = allTasks
+        .filter(t => t.status === 'done' || t.status === 'cancelled')
+        .sort(compareTasksByDueDateDesc);
 
       taskListEl.innerHTML = '';
       emptyState.hidden = activeTasks.length > 0 || doneTasks.length > 0;
